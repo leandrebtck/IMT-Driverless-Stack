@@ -23,7 +23,7 @@ Depuis un terminal, lancez :
 
 ```bash
 sudo apt update && sudo apt install -y curl
-bash <(curl -s https://raw.githubusercontent.com/leandrebtck/SETUP_IMT_V1/main/SETUP_IMT_V1.sh)
+bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/SETUP_IMT_V1.sh)
 ```
 # Lancement automatique : auto_launch_FSDS.sh
 
@@ -39,5 +39,5 @@ Ce dépôt inclut un exécutable permettant de tout lancer automatiquement :
 
 Sans télécharger manuellement le script, lancez :
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/leandrebtck/SETUP_IMT_V1/main/auto_launch_FSDS.sh)
+bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/auto_launch_FSDS.sh)
 ```
