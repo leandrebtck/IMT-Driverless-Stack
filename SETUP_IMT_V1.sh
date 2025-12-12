@@ -129,6 +129,32 @@ sudo apt install -y xdotool
 sudo apt install wmctrl
 
 ################################
+# 10.1) Installation Python Client FSDS
+################################
+
+echo "[10.1/10] Installation du Python Client FSDS..."
+
+# Installation Python & pip
+sudo apt update
+sudo apt install -y python3-pip python3-venv
+
+# Chemin réel du requirements.txt
+PY_REQUIREMENTS="$HOME/Formula-Student-Driverless-Simulator/python/requirements.txt"
+
+if [ -f "$PY_REQUIREMENTS" ]; then
+    echo "➡️ requirements.txt détecté : $PY_REQUIREMENTS"
+    echo "➡️ Installation des dépendances Python FSDS..."
+    pip install -r "$PY_REQUIREMENTS"
+else
+    echo "❌ ERREUR : requirements.txt introuvable ici :"
+    echo "   $PY_REQUIREMENTS"
+    echo "➡️ Vérifie que ton dépôt FSDS est bien présent dans ~/Formula-Student-Driverless-Simulator/"
+fi
+
+echo "✅ Python Client FSDS installé avec succès !"
+
+
+################################
 # 11) Fin
 ################################
 
