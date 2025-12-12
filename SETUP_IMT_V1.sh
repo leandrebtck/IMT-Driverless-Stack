@@ -118,9 +118,18 @@ colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 echo "[9/10] Ajout du setup ROS FSDS dans .bashrc..."
 echo "source ~/Formula-Student-Driverless-Simulator/ros2/install/setup.bash" >> ~/.bashrc
 
+################################
+# 10) Installation de l'nstallation des outils nécessaires pour automatiser des interactions avec la fenêtre active
+
+# xdotool : permet de simuler des entrées clavier/souris et manipuler les fenêtres
+# wmctrl  : permet de gérer et contrôler les fenêtres (changer de bureau, focus, etc.)
+################################
+
+sudo apt install -y xdotool
+sudo apt install wmctrl
 
 ################################
-# 10) Fin
+# 11) Fin
 ################################
 
 echo ""
@@ -132,7 +141,7 @@ echo "Démarrer le simulateur :"
 echo "   cd ~/Formula-Student-Driverless-Simulator-binary"
 echo "   ./FSDS.sh"
 echo ""
-echo "Démarrer le ROS bridge :"
+echo "Démarrer le ROS bridge (dans un autre terminal) :"
 echo "   cd ~/Formula-Student-Driverless-Simulator/ros2"
 echo "   source install/setup.bash"
 echo "   ros2 launch fsds_ros2_bridge fsds_ros2_bridge.launch.py"
