@@ -137,6 +137,9 @@ echo "[10.1/10] Installation du Python Client FSDS..."
 # Installation Python & pip
 sudo apt update
 sudo apt install -y python3-pip python3-venv
+sudo apt install python3-pip
+pip3 install ultralytics opencv-python pynput
+sudo apt install -y ros-galactic-cv-bridge ros-galactic-vision-opencv
 
 # Chemin réel du requirements.txt
 PY_REQUIREMENTS="$HOME/Formula-Student-Driverless-Simulator/python/requirements.txt"
