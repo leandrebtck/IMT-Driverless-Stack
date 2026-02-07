@@ -51,4 +51,14 @@ bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull
 ```bash
 bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh"
 ```
+Pour plus de visibilité :
 
+```bash
+source /opt/ros/galactic/setup.bash
+rviz2
+```
+Puis : 
+ -Fixed Frame (en haut a gauche), cliquez dessus et selectionnez à droite fsds/Lidar1
+ -Add (en bas à gauche) ---> By topic ---> lidar -> cone_markers -> MarkerArray -> OK
+ -Puis appuyez sur la flèche à côté de MarkerArray et vérifiez bien que le topic est : /lidar/cone_markers
+ 
