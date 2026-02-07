@@ -6,7 +6,7 @@ SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-echo "🚀 LANCEMENT STACK COMPLETE (CAM + LIDAR)"
+echo "🚀 LANCEMENT STACK COMPLETE (CAMERA + LIDAR)"
 echo "📂 Dossier de travail détecté : $SCRIPT_DIR"
 
 # 1. SIMULATEUR
@@ -15,7 +15,6 @@ gnome-terminal --title="SIMULATEUR" -- bash -c "cd $SIM_PATH; ./FSDS.sh -windowe
 sleep 5
 
 # 2. ROS2 BRIDGE 
-# Le bridge a souvent son propre workspace (dans le dossier du simu)
 echo "🔌 Lancement Bridge..."
 gnome-terminal --title="BRIDGE ROS2" -- bash -c "source /opt/ros/galactic/setup.bash; cd ~/Formula-Student-Driverless-Simulator/ros2; source install/setup.bash; ros2 launch fsds_ros2_bridge fsds_ros2_bridge.launch.py; exec bash" &
 sleep 3
@@ -38,7 +37,7 @@ gnome-terminal --title="LIDAR PROCESSING" -- bash -c "
 sleep 2
 
 # 4. PERCEPTION (YOLO)
-echo "👁️ Lancement YOLO..."
+echo "Lancement YOLO..."
 gnome-terminal --title="YOLO PERCEPTION" -- bash -c "
     source /opt/ros/galactic/setup.bash; 
     # INDISPENSABLE : On charge ton workspace pour que ROS trouve tes paquets
