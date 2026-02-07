@@ -41,9 +41,14 @@ Sans télécharger manuellement le script, lancez :
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/auto_launch_FSDS.sh)
 ```
-## Lancer automatiquement FSDS + ROS2 + SCRIPTS PYTHON (une seule commande)
+## Lancer automatiquement FSDS + ROS2 + YOLO (uniquement)
 
 ```bash
 bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; ~/IMT-Driverless-Stack/python_stack/auto_launch.sh"
+```
+## Lancer automatiquement FDSD + ROS2 + CAMERA(YOLO) + LIDAR (1 commande)
+
+```bash
+bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh"
 ```
 
