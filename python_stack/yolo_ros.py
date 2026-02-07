@@ -7,6 +7,7 @@ import cv2
 from ultralytics import YOLO
 import os 
 import sys
+import torch
 
 class YoloPerceptionNode(Node):
     def __init__(self):
@@ -47,15 +48,13 @@ class YoloPerceptionNode(Node):
         }
 
         self.get_logger().info(f"🔧 Chargement modèle : {self.model_path}")
+        self.model = YOLO(self.model_path)
         
-        try:
-            self.model = YOLO(self.model_path)
-        except Exception as e:
-            self.get_logger().error(f"❌ Erreur modèle : {e}")
-            raise e
-
+        self.model.eval()
         self.bridge = CvBridge()
+        self.frame_id = 0
 
+        
         # QoS Robustesse
         self.subscription = self.create_subscription(
             Image,
@@ -68,49 +67,46 @@ class YoloPerceptionNode(Node):
 
     def listener_callback(self, msg):
         try:
-            # 1. Réception
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            display_frame = cv_image.copy()
+            #1. Conversion image
+            cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
 
-            # 2. Inférence
-            results = self.model(cv_image, verbose=False, conf=0.5)
+            #2. Skip une frame sur deux 
+            self.frame_id += 1
+            if self.frame_id % 2 != 0:
+                return
 
-            # 3. Traitement
+            #3. Resize AVANT YOLO
+            resized = cv2.resize(cv_image, (640, 640))
+            display_frame = resized.copy()
+
+            #4. Inférence 
+            with torch.no_grad():
+                results = self.model(resized, conf=0.5, verbose=False)
+
+            #5. Dessin des détections
             for box in results[0].boxes:
-                # Infos brutes
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
 
-                # --- PARTIE TEXTE ---
-                # Si l'ID est dans notre liste personnalisée, on prend notre nom
-                if cls_id in self.CUSTOM_NAMES:
-                    name_display = self.CUSTOM_NAMES[cls_id]
-                else:
-                    # Sinon on prend le nom par défaut du modèle
-                    name_display = self.model.names[cls_id]
-
-                label = f"{name_display} {conf:.2f}"
-                # ----------------------------------
-
-                # Choix Couleur
+                name = self.CUSTOM_NAMES.get(cls_id, self.model.names[cls_id])
+                label = f"{name} {conf:.2f}"
                 color = self.COLORS.get(cls_id, (255, 255, 255))
 
-                # Dessin Cadre
                 cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
-                
-                # Dessin Texte
-                t_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-                cv2.rectangle(display_frame, (x1, y1 - 20), (x1 + t_size[0], y1), color, -1)
-                cv2.putText(display_frame, label, (x1, y1 - 5), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
 
-            # 4. Affichage
+                t_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+                cv2.rectangle(display_frame, (x1, y1 - 20),
+                              (x1 + t_size[0], y1), color, -1)
+                cv2.putText(display_frame, label, (x1, y1 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+
+            #6. Affichage
             cv2.imshow("YOLO FINAL", display_frame)
             cv2.waitKey(1)
 
         except Exception as e:
-            self.get_logger().error(f"Erreur Display : {e}")
+            self.get_logger().error(f"❌ Erreur YOLO : {e}")
 
 def main(args=None):
     rclpy.init(args=args)
