@@ -67,41 +67,48 @@ class YoloPerceptionNode(Node):
 
     def listener_callback(self, msg):
         try:
-            #1. Conversion image
+            # 1. Gestion du Skip Frame (Compteur)
+            self.frame_id += 1
+            
+            # Si c'est une frame qu'on doit skip
+            if self.frame_id % 2 != 0:
+                cv2.waitKey(1) 
+                return 
+
+            # 2. Conversion image
             cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
 
-            #2. Skip une frame sur deux 
-            self.frame_id += 1
-            if self.frame_id % 2 != 0:
-                return
-
-            #3. Resize AVANT YOLO
+            # 3. Resize AVANT YOLO (640x640)
             resized = cv2.resize(cv_image, (640, 640))
             display_frame = resized.copy()
 
-            #4. Inférence 
+            # 4. Inférence
             with torch.no_grad():
+                # verbose=False évite de spammer le terminal
                 results = self.model(resized, conf=0.5, verbose=False)
 
-            #5. Dessin des détections
-            for box in results[0].boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
+            # 5. Dessin des détections
+            if len(results) > 0:
+                for box in results[0].boxes:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
 
-                name = self.CUSTOM_NAMES.get(cls_id, self.model.names[cls_id])
-                label = f"{name} {conf:.2f}"
-                color = self.COLORS.get(cls_id, (255, 255, 255))
+                    # Gestion sécurisée du nom (get avec valeur par défaut)
+                    name = self.CUSTOM_NAMES.get(cls_id, self.model.names[cls_id])
+                    
+                    label = f"{name} {conf:.2f}"
+                    color = self.COLORS.get(cls_id, (255, 255, 255))
 
-                cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
+                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
 
-                t_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-                cv2.rectangle(display_frame, (x1, y1 - 20),
-                              (x1 + t_size[0], y1), color, -1)
-                cv2.putText(display_frame, label, (x1, y1 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+                    # Lisibilité
+                    t_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+                    cv2.rectangle(display_frame, (x1, y1 - 20), (x1 + t_size[0], y1), color, -1)
+                    cv2.putText(display_frame, label, (x1, y1 - 5),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
 
-            #6. Affichage
+            # 6. Affichage
             cv2.imshow("YOLO FINAL", display_frame)
             cv2.waitKey(1)
 
