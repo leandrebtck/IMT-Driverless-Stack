@@ -44,23 +44,23 @@ if [ -f ~/ros2_ws/install/setup.bash ]; then
 fi
 
 ###########################################
-# WAIT FOR /lidar/points
+# WAIT FOR /lidar/obstacles
 ###########################################
 
-echo "⏳ Attente que /lidar/points soit publié..."
+echo "⏳ Attente que /lidar/obstacles soit publié..."
 
 MAX_WAIT=30
 COUNT=0
-while ! ros2 topic list | grep -q '/lidar/points'; do
+while ! ros2 topic list | grep -q '/lidar/obstacles'; do
     sleep 1
     COUNT=$((COUNT+1))
     if [ $COUNT -ge $MAX_WAIT ]; then
-        echo "❌ /lidar/points introuvable après $MAX_WAIT secondes"
+        echo "❌ /lidar/obstacles introuvable après $MAX_WAIT secondes"
         exit 1
     fi
 done
 
-echo "✅ /lidar/points détecté"
+echo "✅ /lidar/obstacles détecté"
 
 ###########################################
 # LAUNCH cone_fusion.py
