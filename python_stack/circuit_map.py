@@ -1,95 +1,81 @@
 #!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
 from visualization_msgs.msg import MarkerArray
 from nav_msgs.msg import Odometry
-from pyqtgraph.Qt import QtCore, QtWidgets
+from pyqtgraph.Qt import QtWidgets, QtCore
 import pyqtgraph as pg
-import numpy as np
 import sys
 
 class CircuitMap(Node):
     def __init__(self):
         super().__init__('circuit_map')
 
-        # ---- Subscriptions ----
-        self.cones_sub = self.create_subscription(
-            MarkerArray,
-            '/cones_relative',
-            self.cones_callback,
-            10
-        )
-        self.odom_sub = self.create_subscription(
-            Odometry,
-            '/odom',
-            self.odom_callback,
-            10
-        )
+        # --- Subscribers ROS2 ---
+        self.create_subscription(MarkerArray, '/cones_relative', self.cones_callback, 10)
+        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
-        # ---- PyQtGraph Setup ----
-        self.app = QtWidgets.QApplication(sys.argv)
-        self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
-        self.win.resize(1000, 800)
-        self.plot = self.win.addPlot(title="Map of cones and vehicle")
-        self.plot.setAspectLocked(True)  # 1:1 aspect ratio
+        # --- Données internes ---
+        self.cones_global = set()  # pour éviter les doublons
+        self.vehicle_pos = (0.0, 0.0)
+
+        # --- PyQtGraph Setup ---
+        self.app = QtWidgets.QApplication([])
+        self.win = pg.GraphicsLayoutWidget(title="Circuit Map")
+        self.win.show()
+        self.win.setWindowTitle('Circuit Map FSDS')
+        self.plot = self.win.addPlot()
+        self.plot.setAspectLocked(True)  # ratio 1:1
         self.plot.showGrid(x=True, y=True)
 
         # Scatter plots
-        self.plot_points = {}  # points uniques des cônes
-        self.cones_scatter = pg.ScatterPlotItem(pen=pg.mkPen(None), brush=pg.mkBrush(255,0,0), size=10)
-        self.vehicle_scatter = pg.ScatterPlotItem(pen=pg.mkPen(None), brush=pg.mkBrush(0,0,255), size=12)
-        self.plot.addItem(self.cones_scatter)
-        self.plot.addItem(self.vehicle_scatter)
+        self.cones_plot = pg.ScatterPlotItem(size=10, brush=pg.mkBrush(255,0,0))
+        self.vehicle_plot = pg.ScatterPlotItem(size=12, brush=pg.mkBrush(0,0,255))
+        self.plot.addItem(self.cones_plot)
+        self.plot.addItem(self.vehicle_plot)
 
-        # Vehicle position
-        self.vehicle_pos = np.array([0.0, 0.0])
-
-        # Fixed view range (juste assez large pour voir les cônes autour)
-        self.view_range = 20  # mètres autour de la voiture
-
-        # Timer pour refresh
+        # Timer pour mise à jour graphique
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
-        self.timer.start(100)  # refresh toutes les 100ms
+        self.timer.start(50)  # rafraîchit toutes les 50 ms
 
-        self.get_logger().info("Circuit map node started")
+        self.get_logger().info("✅ CircuitMap lancé et prêt.")
 
     def cones_callback(self, msg):
-        """Stocke uniquement les nouveaux cones détectés"""
-        for marker in msg.markers:
-            x, y = marker.pose.position.x, marker.pose.position.y
-            key = (round(x,2), round(y,2))
-            if key not in self.plot_points:
-                self.plot_points[key] = (x, y)
+        # Ajoute uniquement les nouveaux cônes (en coordonnées globales)
+        for m in msg.markers:
+            x, y = round(m.pose.position.x,2), round(m.pose.position.y,2)
+            self.cones_global.add( (x,y) )
 
     def odom_callback(self, msg):
-        """Met à jour la position de la voiture"""
-        self.vehicle_pos[0] = msg.pose.pose.position.x
-        self.vehicle_pos[1] = msg.pose.pose.position.y
+        # Position de la voiture
+        self.vehicle_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
 
     def update_plot(self):
-        """Met à jour le plot dynamique avec une vue fixe autour de la voiture"""
-        if self.plot_points:
-            xy = np.array(list(self.plot_points.values()))
-            self.cones_scatter.setData(x=xy[:,0], y=xy[:,1])
-        self.vehicle_scatter.setData(x=[self.vehicle_pos[0]], y=[self.vehicle_pos[1]])
+        # Mets à jour la position des cônes
+        if self.cones_global:
+            cones = list(self.cones_global)
+            xs, ys = zip(*cones)
+            self.cones_plot.setData(xs, ys)
 
-        # Fenêtre centrée sur la voiture avec une portée fixe
-        self.plot.setXRange(self.vehicle_pos[0]-self.view_range, self.vehicle_pos[0]+self.view_range)
-        self.plot.setYRange(self.vehicle_pos[1]-self.view_range, self.vehicle_pos[1]+self.view_range)
+        # Mets à jour la position de la voiture
+        x, y = self.vehicle_pos
+        self.vehicle_plot.setData([x], [y])
 
 def main(args=None):
     rclpy.init(args=args)
     node = CircuitMap()
     try:
-        rclpy.spin(node)
+        # Intègre ROS2 et PyQt dans le même thread
+        rclpy_spin_timer = QtCore.QTimer()
+        rclpy_spin_timer.timeout.connect(lambda: rclpy.spin_once(node, timeout_sec=0))
+        rclpy_spin_timer.start(10)  # spin ROS toutes les 10ms
+        sys.exit(node.app.exec_())
     except KeyboardInterrupt:
         pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
-        sys.exit(node.app.exec_())
 
 if __name__ == '__main__':
     main()
