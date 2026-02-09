@@ -65,6 +65,5 @@ Puis :
  # Test de lancement de cone fusion une fois tout cela fait avec cette commande :
  ```bash
 bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/auto_launch_cone_fusion.sh)
-
 ```
  
