@@ -15,8 +15,8 @@ class CircuitMap(Node):
         self.create_subscription(MarkerArray, '/cones_relative', self.cones_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
-        # Stockage
-        self.cones_global = []  # liste de tuples (x, y)
+        # Stockage des cônes globaux et de la voiture
+        self.cones_global = {}  # {(x, y): couleur}
         self.car_pos = (0.0, 0.0)
 
         # ---- Setup PyQtGraph ----
@@ -24,7 +24,7 @@ class CircuitMap(Node):
         self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
         self.win.resize(800, 800)
         self.plot = self.win.addPlot()
-        self.plot.setAspectLocked(True)  # garder proportions réelles
+        self.plot.setAspectLocked(True)
         self.plot.showGrid(x=True, y=True)
         self.plot.setLabel('left', 'Y (m)')
         self.plot.setLabel('bottom', 'X (m)')
@@ -35,11 +35,7 @@ class CircuitMap(Node):
         self.plot.addItem(self.cones_scatter)
         self.plot.addItem(self.car_scatter)
 
-        # Ligne pour relier les deux cônes les plus proches
-        self.line_item = pg.PlotDataItem(pen=pg.mkPen('r', width=1))
-        self.plot.addItem(self.line_item)
-
-        # Timer pour rafraîchir PyQtGraph et ROS
+        # Timer pour rafraîchir PyQtGraph
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(50)  # 20 Hz
@@ -52,7 +48,10 @@ class CircuitMap(Node):
             y = marker.pose.position.y
             key = (round(x,2), round(y,2))
             if key not in self.cones_global:
-                self.cones_global.append(key)
+                # couleur rouge par défaut
+                self.cones_global[key] = (marker.color.r*255,
+                                          marker.color.g*255,
+                                          marker.color.b*255)
 
     def odom_callback(self, msg: Odometry):
         self.car_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
@@ -63,23 +62,17 @@ class CircuitMap(Node):
         # Affichage voiture
         self.car_scatter.setData([self.car_pos[0]], [self.car_pos[1]])
 
-        # Affichage cônes
+        # Affichage des cônes globaux
         if self.cones_global:
-            cones_array = np.array(self.cones_global)
-            self.cones_scatter.setData(cones_array[:,0], cones_array[:,1])
+            coords = np.array(list(self.cones_global.keys()))
+            colors = [pg.mkBrush(r,g,b,200) for r,g,b in self.cones_global.values()]
+            self.cones_scatter.setData(coords[:,0], coords[:,1], brush=colors)
 
-            # Relier les deux cônes les plus proches du véhicule
-            dists = np.linalg.norm(cones_array - np.array(self.car_pos), axis=1)
-            if len(dists) >= 2:
-                idx = np.argsort(dists)[:2]
-                pts = cones_array[idx]
-                self.line_item.setData([pts[0,0], pts[1,0]], [pts[0,1], pts[1,1]])
-
-        # Ajuster la vue autour de la voiture (fixe ±10 m)
-        x_min = self.car_pos[0] - 10
-        x_max = self.car_pos[0] + 10
-        y_min = self.car_pos[1] - 10
-        y_max = self.car_pos[1] + 10
+        # Vue centrée sur la voiture ±20 m
+        x_min = self.car_pos[0] - 20
+        x_max = self.car_pos[0] + 20
+        y_min = self.car_pos[1] - 20
+        y_max = self.car_pos[1] + 20
         self.plot.setXRange(x_min, x_max)
         self.plot.setYRange(y_min, y_max)
 
