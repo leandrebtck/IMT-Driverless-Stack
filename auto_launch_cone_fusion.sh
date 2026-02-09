@@ -63,4 +63,14 @@ gnome-terminal -- bash -c "
     exec bash
 "
 
-echo "✅ cone_fusion.py et circuit_map.py lancés"
+###########################################
+# OPEN RViz
+###########################################
+
+echo "🚀 Ouverture de RViz..."
+gnome-terminal -- bash -c "
+    rviz2;
+    exec bash
+"
+
+echo "✅ cone_fusion.py, circuit_map.py lancés et RViz ouvert"
