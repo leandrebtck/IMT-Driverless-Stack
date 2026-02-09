@@ -25,42 +25,7 @@ if [ -f ~/ros2_ws/install/setup.bash ]; then
     source ~/ros2_ws/install/setup.bash
 fi
 
-###########################################
-# 1. LANCEMENT SIMULATEUR OU ROSBAG
-###########################################
-echo "🎮 Lancement Simulateur / Rosbag..."
-gnome-terminal -- bash -c "
-cd $SIM_PATH
-# Remplace par 'ros2 bag play ...' si tu veux replay
-./FSDS.sh -windowed -ResX=640 -ResY=480
-exec bash" &
-sleep 5
 
-###########################################
-# 2. LANCEMENT YOLO
-###########################################
-echo "🚀 Vérification du dossier weights pour YOLO..."
-if [ ! -d "$PYTHON_STACK/weights" ]; then
-    echo "❌ Dossier weights introuvable ! Assurez-vous qu'il existe dans $PYTHON_STACK"
-    exit 1
-fi
-
-echo "🟢 Lancement yolo_ros.py..."
-gnome-terminal -- bash -c "
-cd $PYTHON_STACK
-python3 yolo_ros.py
-exec bash" &
-sleep 2
-
-###########################################
-# 3. LANCEMENT GLOBAL DRIVE
-###########################################
-echo "🏎️ Lancement global_drive.py..."
-gnome-terminal -- bash -c "
-cd $PYTHON_STACK
-python3 global_drive.py
-exec bash" &
-sleep 2
 
 ###########################################
 # 4. LANCEMENT LIDAR ROS
