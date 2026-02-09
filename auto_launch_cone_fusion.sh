@@ -19,12 +19,16 @@ command -v curl >/dev/null 2>&1 || { echo "❌ curl non trouvé"; exit 1; }
 command -v ros2 >/dev/null 2>&1 || { echo "❌ ros2 non trouvé"; exit 1; }
 
 ###########################################
-# DOWNLOAD cone_fusion.py
+# DOWNLOAD cone_fusion.py AND circuit_map.py
 ###########################################
 
 echo "📥 Téléchargement de cone_fusion.py..."
 curl -s "$REPO_RAW/python_stack/cone_fusion.py" -o "$TMP_DIR/cone_fusion.py"
 chmod +x "$TMP_DIR/cone_fusion.py"
+
+echo "📥 Téléchargement de circuit_map.py..."
+curl -s "$REPO_RAW/python_stack/circuit_map.py" -o "$TMP_DIR/circuit_map.py"
+chmod +x "$TMP_DIR/circuit_map.py"
 
 ###########################################
 # SOURCE ROS2
@@ -36,7 +40,7 @@ if [ -f ~/ros2_ws/install/setup.bash ]; then
 fi
 
 ###########################################
-# LAUNCH cone_fusion.py DIRECTLY
+# LAUNCH cone_fusion.py
 ###########################################
 
 echo "🚀 Lancement du node cone_fusion.py..."
@@ -47,4 +51,16 @@ gnome-terminal -- bash -c "
     exec bash
 "
 
-echo "✅ cone_fusion.py lancé"
+###########################################
+# LAUNCH circuit_map.py
+###########################################
+
+echo "🚀 Lancement du node circuit_map.py..."
+gnome-terminal -- bash -c "
+    cd \"$TMP_DIR\";
+    echo '🟢 circuit_map.py en cours...';
+    python3 circuit_map.py;
+    exec bash
+"
+
+echo "✅ cone_fusion.py et circuit_map.py lancés"
