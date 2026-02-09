@@ -23,21 +23,22 @@ class CircuitMap(Node):
         self.app = QtWidgets.QApplication([])
         self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
         self.plot = self.win.addPlot()
-        self.plot.setAspectLocked(True)  # x=y
+        self.plot.setAspectLocked(False)  # permet zoom/dézoom dynamique
         self.plot.showGrid(x=True, y=True)
         self.plot.setLabel('left', 'Y (m)')
         self.plot.setLabel('bottom', 'X (m)')
+        self.plot.setBackground('w')  # fond blanc pour mieux voir les points
 
         # Scatter plots
-        self.cones_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255,0,0,200))
-        self.car_scatter = pg.ScatterPlotItem(size=12, pen=pg.mkPen(None), brush=pg.mkBrush(0,0,255,200))
+        self.cones_scatter = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(255,0,0,200))
+        self.car_scatter = pg.ScatterPlotItem(size=12, pen=pg.mkPen(None), brush=pg.mkBrush(0,0,255,255))
         self.plot.addItem(self.cones_scatter)
         self.plot.addItem(self.car_scatter)
 
         # Timer pour refresh
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
-        self.timer.start(100)  # 10 Hz
+        self.timer.start(50)  # 20 Hz pour fluidité
 
         self.get_logger().info("CircuitMap node started")
 
@@ -45,7 +46,7 @@ class CircuitMap(Node):
         for marker in msg.markers:
             x = marker.pose.position.x
             y = marker.pose.position.y
-            key = (round(x,2), round(y,2))  # éviter doublons
+            key = (round(x, 2), round(y, 2))  # éviter doublons
             if key not in self.cones_global:
                 self.cones_global.add(key)
 
@@ -60,12 +61,16 @@ class CircuitMap(Node):
         # Voiture
         self.car_scatter.setData([self.car_pos[0]], [self.car_pos[1]])
 
-        # Auto-range / zoom dynamique
+        # Dézoom automatique : afficher tous les points + voiture
         all_x = [self.car_pos[0]] + [c[0] for c in self.cones_global]
         all_y = [self.car_pos[1]] + [c[1] for c in self.cones_global]
         if all_x and all_y:
-            self.plot.setXRange(min(all_x)-5, max(all_x)+5, padding=0)
-            self.plot.setYRange(min(all_y)-5, max(all_y)+5, padding=0)
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            margin_x = (max_x - min_x) * 0.2 + 1  # 20% marge + 1m
+            margin_y = (max_y - min_y) * 0.2 + 1
+            self.plot.setXRange(min_x - margin_x, max_x + margin_x)
+            self.plot.setYRange(min_y - margin_y, max_y + margin_y)
 
 def main(args=None):
     rclpy.init(args=args)
