@@ -6,6 +6,7 @@ from nav_msgs.msg import Odometry
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtWidgets, QtCore
 import numpy as np
+from math import sin, cos
 
 class CircuitMap(Node):
     def __init__(self, min_dist=0.8):
@@ -17,7 +18,8 @@ class CircuitMap(Node):
 
         # Stockage global
         self.cones_global = []
-        self.car_pos = (0.0, 0.0)
+        self.car_pos = np.array([0.0, 0.0])
+        self.car_yaw = 0.0
         self.min_dist = min_dist  # distance min entre 2 cônes
 
         # ---- Setup PyQtGraph ----
@@ -43,19 +45,32 @@ class CircuitMap(Node):
 
         self.get_logger().info("CircuitMap node started")
 
+    def odom_callback(self, msg: Odometry):
+        # Position globale
+        self.car_pos = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y])
+
+        # Orientation (yaw) à partir de quaternion
+        q = msg.pose.pose.orientation
+        siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1 - 2 * (q.y**2 + q.z**2)
+        self.car_yaw = np.arctan2(siny_cosp, cosy_cosp)
+
     def cones_callback(self, msg: MarkerArray):
         for marker in msg.markers:
-            x = marker.pose.position.x
-            y = marker.pose.position.y
-            new_point = np.array([x, y])
+            # Coordonnées du cône dans le repère véhicule
+            local_x = marker.pose.position.x
+            local_y = marker.pose.position.y
+
+            # Transformation en coordonnées globales
+            global_x = self.car_pos[0] + cos(self.car_yaw) * local_x - sin(self.car_yaw) * local_y
+            global_y = self.car_pos[1] + sin(self.car_yaw) * local_x + cos(self.car_yaw) * local_y
+            new_point = np.array([global_x, global_y])
+
+            # Ajout uniquement si éloigné des points existants
             if self.is_new_cone(new_point):
                 self.cones_global.append(new_point)
 
-    def odom_callback(self, msg: Odometry):
-        self.car_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
-
     def is_new_cone(self, point):
-        """Retourne True si le point est assez éloigné de tous les points existants"""
         for existing in self.cones_global:
             if np.linalg.norm(existing - point) < self.min_dist:
                 return False
@@ -64,6 +79,7 @@ class CircuitMap(Node):
     def update(self):
         rclpy.spin_once(self, timeout_sec=0)
 
+        # Affichage des cônes
         if self.cones_global:
             cones_array = np.array(self.cones_global)
             self.cones_scatter.setData(cones_array[:,0], cones_array[:,1])
