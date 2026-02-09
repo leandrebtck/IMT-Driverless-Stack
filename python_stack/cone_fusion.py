@@ -2,121 +2,103 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
-from sensor_msgs.msg import PointCloud2
-from sensor_msgs_py import point_cloud2
+import math
 from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import Odometry
-
-# Paramètres
-CLUSTER_DIST = 0.5  # Distance pour regrouper points LiDAR
-MIN_POINTS = 5      # Minimum de points pour valider un cluster
-DEFAULT_COLOR = "ORANGE"
 
 class ConeFusion(Node):
     def __init__(self):
         super().__init__('cone_fusion')
 
-        # Subscribers LiDAR et Odom
-        self.create_subscription(PointCloud2, '/lidar/obstacles', self.lidar_callback, 10)
+        # Abonnement aux clusters (local) et à l'odométrie
+        self.create_subscription(MarkerArray, '/lidar/cone_markers', self.cluster_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
-        # Publisher pour les cônes fusionnés
-        self.cones_pub = self.create_publisher(MarkerArray, '/cones_relative', 10)
+        # Publication de la CARTE GLOBALE (persistante)
+        self.global_map_pub = self.create_publisher(MarkerArray, '/map/global_cones', 10)
 
-        # Stockage
-        self.cones_global = set()   # coordonnées globales (x, y)
-        self.car_pos = (0.0, 0.0)
-        self.car_yaw = 0.0          # orientation de la voiture
+        # État du véhicule
+        self.car_x = 0.0
+        self.car_y = 0.0
+        self.car_yaw = 0.0
 
-        self.get_logger().info("Cone Fusion node started")
+        # Base de données des cônes globaux
+        # Liste de dictionnaires : [{'x': 12.5, 'y': 8.2, 'color': 'unknown'}, ...]
+        self.global_cones = []
+        self.ASSOCIATION_DIST = 1.0 # Rayon (m) pour dire "c'est le même cône"
+
+        self.get_logger().info("🌍 Cone Fusion (Mapping) Node started")
 
     def odom_callback(self, msg: Odometry):
-        self.car_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
-        # Calcul de l'orientation yaw (z)
-        import math
+        self.car_x = msg.pose.pose.position.x
+        self.car_y = msg.pose.pose.position.y
+        
+        # Quaternion -> Euler (Yaw)
         q = msg.pose.pose.orientation
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.car_yaw = math.atan2(siny_cosp, cosy_cosp)
 
-    def lidar_callback(self, msg: PointCloud2):
-        # Lecture points LiDAR filtrés par Z
-        points = np.array([
-            [p[0], p[1]]
-            for p in point_cloud2.read_points(msg, field_names=("x","y","z"), skip_nans=True)
-            if -0.2 < p[2] < 0.5
-        ])
-        if len(points) == 0:
+    def cluster_callback(self, msg: MarkerArray):
+        # On attend d'avoir une position valide avant de mapper
+        if self.car_x == 0.0 and self.car_y == 0.0:
             return
 
-        clusters = self.cluster_points(points)
+        new_detection = False
 
+        for marker in msg.markers:
+            # 1. Coordonnées locales (vu par le lidar)
+            x_local = marker.pose.position.x
+            y_local = marker.pose.position.y
+
+            # 2. Transformation Locale -> Globale
+            # X_global = X_car + (x_loc * cos(theta) - y_loc * sin(theta))
+            x_global = self.car_x + (x_local * math.cos(self.car_yaw) - y_local * math.sin(self.car_yaw))
+            y_global = self.car_y + (x_local * math.sin(self.car_yaw) + y_local * math.cos(self.car_yaw))
+
+            # 3. Association de données (Est-ce un nouveau cône ?)
+            if self.is_new_cone(x_global, y_global):
+                self.global_cones.append({'x': x_global, 'y': y_global, 'color': 'unknown'})
+                new_detection = True
+
+        # 4. Si on a trouvé de nouveaux cônes, on republie toute la carte
+        if new_detection:
+            self.publish_global_map()
+
+    def is_new_cone(self, x, y):
+        """Vérifie si un cône existe déjà à proximité de (x, y)"""
+        for cone in self.global_cones:
+            dist = math.sqrt((cone['x'] - x)**2 + (cone['y'] - y)**2)
+            if dist < self.ASSOCIATION_DIST:
+                return False # Cône déjà connu
+        return True
+
+    def publish_global_map(self):
         marker_array = MarkerArray()
-        cone_id = 0
-
-        for cluster in clusters:
-            if len(cluster) < MIN_POINTS:
-                continue
-            centroid_local = np.mean(cluster, axis=0)
-            # Transformation locale -> global
-            x_global, y_global = self.local_to_global(centroid_local[0], centroid_local[1])
-
-            key = (round(x_global, 2), round(y_global, 2))
-            if key in self.cones_global:
-                continue  # Ne pas republier si déjà détecté
-
-            self.cones_global.add(key)
-
-            # Création du Marker
+        
+        for i, cone in enumerate(self.global_cones):
             m = Marker()
-            m.header.frame_id = "odom"
-            m.id = cone_id
+            m.header.frame_id = "odom" # La carte est fixe dans le repère Odom
+            m.header.stamp = self.get_clock().now().to_msg()
+            m.ns = "global_map"
+            m.id = i
             m.type = Marker.CYLINDER
             m.action = Marker.ADD
-            m.scale.x = 0.3
-            m.scale.y = 0.3
-            m.scale.z = 0.5
-            m.pose.position.x = x_global
-            m.pose.position.y = y_global
-            m.pose.position.z = 0.25
-            m.color.a = 1.0
+            m.pose.position.x = cone['x']
+            m.pose.position.y = cone['y']
+            m.pose.position.z = 0.2
+            m.scale.x, m.scale.y, m.scale.z = 0.2, 0.2, 0.5
+            
+            # Couleur Orange (en attendant la fusion caméra)
             m.color.r = 1.0
-            m.color.g = 0.0
+            m.color.g = 0.5
             m.color.b = 0.0
-            m.text = DEFAULT_COLOR
-
+            m.color.a = 1.0
+            
+            m.lifetime.sec = 0 # Infini
             marker_array.markers.append(m)
-            cone_id += 1
 
-        if marker_array.markers:
-            self.cones_pub.publish(marker_array)
-
-    def local_to_global(self, x_local, y_local):
-        """Transforme les coordonnées LiDAR locales en coordonnées globales via Odom/GPS"""
-        import math
-        cos_yaw = math.cos(self.car_yaw)
-        sin_yaw = math.sin(self.car_yaw)
-        x_global = self.car_pos[0] + x_local * cos_yaw - y_local * sin_yaw
-        y_global = self.car_pos[1] + x_local * sin_yaw + y_local * cos_yaw
-        return x_global, y_global
-
-    def cluster_points(self, points):
-        """Regroupe points proches (simple clustering)"""
-        clusters = []
-        used = np.zeros(len(points), dtype=bool)
-        for i in range(len(points)):
-            if used[i]:
-                continue
-            cluster = [points[i]]
-            used[i] = True
-            for j in range(i+1, len(points)):
-                if used[j]:
-                    continue
-                if np.linalg.norm(points[i]-points[j]) < CLUSTER_DIST:
-                    cluster.append(points[j])
-                    used[j] = True
-            clusters.append(cluster)
-        return clusters
+        self.global_map_pub.publish(marker_array)
 
 def main():
     rclpy.init()
