@@ -23,12 +23,12 @@ class CircuitMap(Node):
         self.app = QtWidgets.QApplication([])
         self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
         self.win.resize(800, 800)
+        self.win.setBackground('w')  # fond blanc correct
         self.plot = self.win.addPlot()
-        self.plot.setAspectLocked(False)
+        self.plot.setAspectLocked(False)  # permet zoom/dézoom dynamique
         self.plot.showGrid(x=True, y=True)
         self.plot.setLabel('left', 'Y (m)')
         self.plot.setLabel('bottom', 'X (m)')
-        self.plot.setBackground('w')  # Fond blanc
 
         # Scatter plots
         self.cones_scatter = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(255,0,0,200))
@@ -39,7 +39,7 @@ class CircuitMap(Node):
         # Timer pour rafraîchir PyQtGraph et ROS
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(50)  # 20 Hz
+        self.timer.start(50)  # 20 Hz pour fluidité
 
         self.get_logger().info("CircuitMap node started")
 
@@ -55,7 +55,7 @@ class CircuitMap(Node):
         self.car_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
 
     def update(self):
-        # Appel à ROS2 spin_once pour traiter les callbacks
+        # Traiter les callbacks ROS
         rclpy.spin_once(self, timeout_sec=0)
 
         # Affichage des cônes
@@ -63,7 +63,7 @@ class CircuitMap(Node):
             cones_array = np.array(list(self.cones_global))
             self.cones_scatter.setData(cones_array[:,0], cones_array[:,1])
 
-        # Affichage de la voiture
+        # Affichage voiture
         self.car_scatter.setData([self.car_pos[0]], [self.car_pos[1]])
 
         # Dézoom automatique
@@ -81,7 +81,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = CircuitMap()
     try:
-        node.app.exec_()  # Lance la boucle Qt principale
+        node.app.exec_()  # boucle Qt principale
     except KeyboardInterrupt:
         pass
     finally:
