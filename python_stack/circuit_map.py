@@ -3,111 +3,132 @@ import rclpy
 from rclpy.node import Node
 from visualization_msgs.msg import MarkerArray
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import NavSatFix
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtWidgets, QtCore
+from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
-from math import sin, cos
+import math
 
 class CircuitMap(Node):
-    def __init__(self, min_dist=0.8):
-        super().__init__('circuit_map')
+    def __init__(self):
+        super().__init__('circuit_map_node')
 
-        # Subscribers ROS2
-        self.create_subscription(MarkerArray, '/cones_relative', self.cones_callback, 10)
+        # --- Subscribers ---
+        self.create_subscription(MarkerArray, '/cones_detected', self.cones_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.create_subscription(NavSatFix, '/gps', self.gps_callback, 10)  # Si GPS utilisé
 
-        # Stockage global
-        self.cones_global = []
-        self.car_pos = np.array([0.0, 0.0])
-        self.car_yaw = 0.0
-        self.min_dist = min_dist  # distance min entre 2 cônes
+        # --- Vehicle state ---
+        self.vehicle_x = 0.0
+        self.vehicle_y = 0.0
+        self.vehicle_yaw = 0.0  # radians
+        self.first_gps = None
 
-        # ---- Setup PyQtGraph ----
-        self.app = QtWidgets.QApplication([])
-        self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
-        self.win.resize(800, 800)
+        # --- Cones ---
+        self.global_cones = []  # list of tuples: (x, y, color)
+        self.cones_seen = set() # pour éviter duplication
+
+        # --- PyQtGraph Window ---
+        self.app = QtGui.QApplication([])
+        self.win = pg.GraphicsLayoutWidget(title="Circuit Map")
         self.plot = self.win.addPlot()
-        self.plot.setAspectLocked(False)
+        self.plot.setAspectLocked(True)
         self.plot.showGrid(x=True, y=True)
-        self.plot.setLabel('left', 'Y (m)')
-        self.plot.setLabel('bottom', 'X (m)')
+        self.win.show()
 
         # Scatter plots
-        self.cones_scatter = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(255,0,0,200))
-        self.car_scatter = pg.ScatterPlotItem(size=12, pen=pg.mkPen(None), brush=pg.mkBrush(0,0,255,255))
+        self.vehicle_scatter = pg.ScatterPlotItem(size=10, brush='b')
+        self.plot.addItem(self.vehicle_scatter)
+        self.cones_scatter = pg.ScatterPlotItem(size=7)
         self.plot.addItem(self.cones_scatter)
-        self.plot.addItem(self.car_scatter)
 
-        # Timer pour rafraîchir PyQtGraph et ROS
+        # Timer for refresh
         self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(50)  # 20 Hz
+        self.timer.timeout.connect(self.update_plot)
+        self.timer.start(100)  # update every 100 ms
 
-        self.get_logger().info("CircuitMap node started")
-
+    # ----------------------------
+    # Odometry callback
+    # ----------------------------
     def odom_callback(self, msg: Odometry):
-        # Position globale
-        self.car_pos = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y])
+        self.vehicle_x = msg.pose.pose.position.x
+        self.vehicle_y = msg.pose.pose.position.y
 
-        # Orientation (yaw) à partir de quaternion
+        # Yaw extraction
         q = msg.pose.pose.orientation
         siny_cosp = 2 * (q.w * q.z + q.x * q.y)
-        cosy_cosp = 1 - 2 * (q.y**2 + q.z**2)
-        self.car_yaw = np.arctan2(siny_cosp, cosy_cosp)
+        cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+        self.vehicle_yaw = math.atan2(siny_cosp, cosy_cosp)
 
+    # ----------------------------
+    # GPS callback
+    # ----------------------------
+    def gps_callback(self, msg: NavSatFix):
+        if self.first_gps is None:
+            self.first_gps = (msg.latitude, msg.longitude)
+        # Conversion GPS -> local meters
+        lat0, lon0 = self.first_gps
+        dx = (msg.longitude - lon0) * 111320 * math.cos(math.radians(lat0))
+        dy = (msg.latitude - lat0) * 110540
+        self.vehicle_x = dx
+        self.vehicle_y = dy
+
+    # ----------------------------
+    # Cones callback
+    # ----------------------------
     def cones_callback(self, msg: MarkerArray):
         for marker in msg.markers:
-            # Coordonnées du cône dans le repère véhicule
-            local_x = marker.pose.position.x
-            local_y = marker.pose.position.y
+            # Créer un ID unique pour chaque cone selon sa position et couleur
+            cone_id = (marker.pose.position.x, marker.pose.position.y, marker.color.r, marker.color.g, marker.color.b)
+            if cone_id in self.cones_seen:
+                continue
+            self.cones_seen.add(cone_id)
 
-            # Transformation en coordonnées globales
-            global_x = self.car_pos[0] + cos(self.car_yaw) * local_x - sin(self.car_yaw) * local_y
-            global_y = self.car_pos[1] + sin(self.car_yaw) * local_x + cos(self.car_yaw) * local_y
-            new_point = np.array([global_x, global_y])
+            # Transformation locale -> globale selon véhicule
+            lx = marker.pose.position.x
+            ly = marker.pose.position.y
 
-            # Ajout uniquement si éloigné des points existants
-            if self.is_new_cone(new_point):
-                self.cones_global.append(new_point)
+            # Rotation et translation
+            gx = (lx * math.cos(self.vehicle_yaw) - ly * math.sin(self.vehicle_yaw)) + self.vehicle_x
+            gy = (lx * math.sin(self.vehicle_yaw) + ly * math.cos(self.vehicle_yaw)) + self.vehicle_y
 
-    def is_new_cone(self, point):
-        for existing in self.cones_global:
-            if np.linalg.norm(existing - point) < self.min_dist:
-                return False
-        return True
+            color = (marker.color.r, marker.color.g, marker.color.b)
+            self.global_cones.append((gx, gy, color))
 
-    def update(self):
-        rclpy.spin_once(self, timeout_sec=0)
+    # ----------------------------
+    # Update plot
+    # ----------------------------
+    def update_plot(self):
+        if not self.global_cones:
+            return
 
-        # Affichage des cônes
-        if self.cones_global:
-            cones_array = np.array(self.cones_global)
-            self.cones_scatter.setData(cones_array[:,0], cones_array[:,1])
+        # Cones
+        x = [c[0] for c in self.global_cones]
+        y = [c[1] for c in self.global_cones]
+        brushes = [pg.mkBrush(int(c[2][0]*255), int(c[2][1]*255), int(c[2][2]*255)) for c in self.global_cones]
+        self.cones_scatter.setData(x=x, y=y, brush=brushes)
 
-        # Affichage voiture
-        self.car_scatter.setData([self.car_pos[0]], [self.car_pos[1]])
+        # Vehicle
+        self.vehicle_scatter.setData([self.vehicle_x], [self.vehicle_y])
 
-        # Dézoom automatique
-        all_x = [self.car_pos[0]] + [c[0] for c in self.cones_global]
-        all_y = [self.car_pos[1]] + [c[1] for c in self.cones_global]
-        if all_x and all_y:
-            min_x, max_x = min(all_x), max(all_x)
-            min_y, max_y = min(all_y), max(all_y)
-            margin_x = (max_x - min_x) * 0.2 + 1
-            margin_y = (max_y - min_y) * 0.2 + 1
-            self.plot.setXRange(min_x - margin_x, max_x + margin_x)
-            self.plot.setYRange(min_y - margin_y, max_y + margin_y)
+        # Auto zoom
+        all_x = x + [self.vehicle_x]
+        all_y = y + [self.vehicle_y]
+        min_x, max_x = min(all_x)-5, max(all_x)+5
+        min_y, max_y = min(all_y)-5, max(all_y)+5
+        self.plot.setXRange(min_x, max_x, padding=0)
+        self.plot.setYRange(min_y, max_y, padding=0)
 
+# ----------------------------
 def main(args=None):
     rclpy.init(args=args)
     node = CircuitMap()
     try:
-        node.app.exec_()
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
