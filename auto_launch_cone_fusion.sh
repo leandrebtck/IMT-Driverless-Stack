@@ -3,8 +3,7 @@
 ###########################################
 # CONFIG
 ###########################################
-# Vérifie si sklearn est installé, sinon l'installe
-python3 -m pip install scikit-learn
+
 
 REPO_DIR="$HOME/IMT-Driverless-Stack"
 PYTHON_STACK="$REPO_DIR/python_stack"
