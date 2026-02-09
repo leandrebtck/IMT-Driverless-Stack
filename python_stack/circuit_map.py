@@ -23,7 +23,6 @@ class CircuitMap(Node):
         self.app = QtWidgets.QApplication([])
         self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
         self.win.resize(800, 800)
-        self.win.setBackground('w')  # fond blanc correct
         self.plot = self.win.addPlot()
         self.plot.setAspectLocked(False)  # permet zoom/dézoom dynamique
         self.plot.showGrid(x=True, y=True)
