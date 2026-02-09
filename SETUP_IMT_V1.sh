@@ -161,7 +161,7 @@ echo "✅ Python Client FSDS installé avec succès !"
 sudo apt update
 sudo apt install ros-galactic-sensor-msgs-py
 python3 -m pip install pyqtgraph PyQt5
-
+python3 -m pip install scikit-learn
 ################################
 # 12) Fin
 ################################
