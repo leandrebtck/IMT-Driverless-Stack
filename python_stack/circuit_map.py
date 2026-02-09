@@ -11,66 +11,66 @@ class CircuitMap(Node):
     def __init__(self):
         super().__init__('circuit_map')
 
-        # Subscribers ROS2
-        self.create_subscription(MarkerArray, '/cones_relative', self.cones_callback, 10)
+        # Subscribers
+        self.create_subscription(MarkerArray, '/map/global_cones', self.map_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
-        # Stockage des cônes globaux et position voiture
-        self.cones_global = {}  # {(x, y): couleur}
-        self.car_pos = (0.0, 0.0)
+        # Données
+        self.x_cones = []
+        self.y_cones = []
+        self.car_x = 0.0
+        self.car_y = 0.0
 
         # ---- Setup PyQtGraph ----
         self.app = QtWidgets.QApplication([])
-        self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
+        self.win = pg.GraphicsLayoutWidget(show=True, title="Carte Globale du Circuit")
         self.win.resize(800, 800)
-        self.plot = self.win.addPlot()
+        self.plot = self.win.addPlot(title="Vue Allocentrique (Carte Fixe)")
         self.plot.setAspectLocked(True)
         self.plot.showGrid(x=True, y=True)
-        self.plot.setLabel('left', 'Y (m)')
-        self.plot.setLabel('bottom', 'X (m)')
 
-        # Scatter plots
-        self.cones_scatter = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(255,0,0,200))
-        self.car_scatter = pg.ScatterPlotItem(size=12, pen=pg.mkPen(None), brush=pg.mkBrush(0,0,255,255))
+        # Cône (Points Rouges)
+        self.cones_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 100, 0, 255))
         self.plot.addItem(self.cones_scatter)
+
+        # Voiture (Point Bleu)
+        self.car_scatter = pg.ScatterPlotItem(size=15, symbol='t1', pen=pg.mkPen(None), brush=pg.mkBrush(0, 0, 255, 255))
         self.plot.addItem(self.car_scatter)
 
-        # Timer pour rafraîchir PyQtGraph
+        # Timer IHM (30 Hz)
         self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self.update_plot)
-        self.timer.start(50)  # 20 Hz
+        self.timer.timeout.connect(self.update_loop)
+        self.timer.start(33)
 
-        self.get_logger().info("CircuitMap node started")
+        self.get_logger().info("📈 CircuitMap affichage démarré")
 
-    def cones_callback(self, msg: MarkerArray):
-        # Stockage global, on ne supprime jamais les points déjà détectés
+    def map_callback(self, msg: MarkerArray):
+        # On met à jour la liste complète des cônes à chaque réception
+        # (ConeFusion envoie toute la carte à chaque fois)
+        temp_x = []
+        temp_y = []
         for marker in msg.markers:
-            x = marker.pose.position.x
-            y = marker.pose.position.y
-            key = (round(x, 2), round(y, 2))
-            if key not in self.cones_global:
-                self.cones_global[key] = (marker.color.r*255,
-                                          marker.color.g*255,
-                                          marker.color.b*255)
+            temp_x.append(marker.pose.position.x)
+            temp_y.append(marker.pose.position.y)
+        
+        self.x_cones = temp_x
+        self.y_cones = temp_y
 
     def odom_callback(self, msg: Odometry):
-        self.car_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+        self.car_x = msg.pose.pose.position.x
+        self.car_y = msg.pose.pose.position.y
 
-    def update_plot(self):
+    def update_loop(self):
+        # Fait tourner ROS un petit coup
         rclpy.spin_once(self, timeout_sec=0)
 
-        # Voiture toujours au centre
-        self.car_scatter.setData([0.0], [0.0])
-
-        # Calcul coordonnées relatives des cônes
-        if self.cones_global:
-            coords = np.array([[x - self.car_pos[0], y - self.car_pos[1]] for x,y in self.cones_global.keys()])
-            colors = [pg.mkBrush(r,g,b,200) for r,g,b in self.cones_global.values()]
-            self.cones_scatter.setData(coords[:,0], coords[:,1], brush=colors)
-
-        # Limites du plot fixes pour afficher une portion large
-        self.plot.setXRange(-100, 100)
-        self.plot.setYRange(-100, 100)
+        # Mise à jour graphique
+        # 1. Les cônes (Carte)
+        if self.x_cones:
+            self.cones_scatter.setData(self.x_cones, self.y_cones)
+        
+        # 2. La voiture
+        self.car_scatter.setData([self.car_x], [self.car_y])
 
 def main(args=None):
     rclpy.init(args=args)
