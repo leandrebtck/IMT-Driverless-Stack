@@ -61,4 +61,10 @@ Puis :
  -Fixed Frame (en haut a gauche), cliquez dessus et selectionnez à droite fsds/Lidar1
  -Add (en bas à gauche) ---> By topic ---> lidar -> cone_markers -> MarkerArray -> OK
  -Puis appuyez sur la flèche à côté de MarkerArray et vérifiez bien que le topic est : /lidar/cone_markers
+
+ # Test de lancement de cone fusion une fois tout cela fait avec cette commande :
+ ```bash
+bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/auto_launch_cone_fusion.sh)
+
+```
  
