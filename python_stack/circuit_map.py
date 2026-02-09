@@ -15,9 +15,10 @@ class CircuitMap(Node):
         self.create_subscription(MarkerArray, '/map/global_cones', self.map_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
-        # Données
-        self.x_cones = []
-        self.y_cones = []
+        # Stockage des cônes globaux
+        self.global_cones = []  # liste de dicts {'x':.., 'y':..}
+
+        # Position de la voiture
         self.car_x = 0.0
         self.car_y = 0.0
 
@@ -25,52 +26,50 @@ class CircuitMap(Node):
         self.app = QtWidgets.QApplication([])
         self.win = pg.GraphicsLayoutWidget(show=True, title="Carte Globale du Circuit")
         self.win.resize(800, 800)
-        self.plot = self.win.addPlot(title="Vue Allocentrique (Carte Fixe)")
+        self.plot = self.win.addPlot(title="Vue allocentrique (voiture au centre)")
         self.plot.setAspectLocked(True)
         self.plot.showGrid(x=True, y=True)
+        self.plot.setXRange(-100, 100)
+        self.plot.setYRange(-100, 100)
 
-        # Cône (Points Rouges)
-        self.cones_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 100, 0, 255))
+        # Scatter plots
+        self.cones_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 200))
         self.plot.addItem(self.cones_scatter)
 
-        # Voiture (Point Bleu)
         self.car_scatter = pg.ScatterPlotItem(size=15, symbol='t1', pen=pg.mkPen(None), brush=pg.mkBrush(0, 0, 255, 255))
         self.plot.addItem(self.car_scatter)
 
-        # Timer IHM (30 Hz)
+        # Timer pour rafraîchir PyQtGraph
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_loop)
-        self.timer.start(33)
+        self.timer.start(50)
 
         self.get_logger().info("📈 CircuitMap affichage démarré")
 
     def map_callback(self, msg: MarkerArray):
-        # On met à jour la liste complète des cônes à chaque réception
-        # (ConeFusion envoie toute la carte à chaque fois)
-        temp_x = []
-        temp_y = []
+        # Ajouter tous les nouveaux cônes à la liste globale si pas déjà présents
         for marker in msg.markers:
-            temp_x.append(marker.pose.position.x)
-            temp_y.append(marker.pose.position.y)
-        
-        self.x_cones = temp_x
-        self.y_cones = temp_y
+            x = marker.pose.position.x
+            y = marker.pose.position.y
+            key = (round(x,2), round(y,2))
+            if all((round(c['x'],2), round(c['y'],2)) != key for c in self.global_cones):
+                self.global_cones.append({'x': x, 'y': y})
+                self.get_logger().info(f"🟢 Nouveau cône détecté: X={x:.2f} Y={y:.2f}")
 
     def odom_callback(self, msg: Odometry):
         self.car_x = msg.pose.pose.position.x
         self.car_y = msg.pose.pose.position.y
 
     def update_loop(self):
-        # Fait tourner ROS un petit coup
         rclpy.spin_once(self, timeout_sec=0)
 
-        # Mise à jour graphique
-        # 1. Les cônes (Carte)
-        if self.x_cones:
-            self.cones_scatter.setData(self.x_cones, self.y_cones)
-        
-        # 2. La voiture
-        self.car_scatter.setData([self.car_x], [self.car_y])
+        # Relatif à la voiture (voiture au centre)
+        if self.global_cones:
+            x_rel = [c['x'] - self.car_x for c in self.global_cones]
+            y_rel = [c['y'] - self.car_y for c in self.global_cones]
+            self.cones_scatter.setData(x_rel, y_rel)
+
+        self.car_scatter.setData([0], [0])  # toujours au centre
 
 def main(args=None):
     rclpy.init(args=args)
