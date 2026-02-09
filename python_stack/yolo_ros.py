@@ -1,13 +1,14 @@
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-import cv2
+from visualization_msgs.msg import Marker, MarkerArray
 from ultralytics import YOLO
+import cv2
 import os
-import sys
-import torch   # 🔹 AJOUT
+import torch
 
 class YoloPerceptionNode(Node):
     def __init__(self):
@@ -15,106 +16,98 @@ class YoloPerceptionNode(Node):
 
         # --- CONFIGURATION ---
         script_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # On construit le chemin vers le poids
         weights_path = os.path.join(script_dir, 'weights', 'best_FINAL.pt')
 
-        self.get_logger().info(f"📍 Dossier du script : {script_dir}")
-        self.get_logger().info(f"⚖️ Chemin calculé du .pt : {weights_path}")
-
-        # Vérification 
         if not os.path.exists(weights_path):
-            self.get_logger().error(
-                f"❌ FICHIER INTROUVABLE ! Vérifier que le dossier 'weights' est bien dans {script_dir}"
-            )
+            self.get_logger().error(f"❌ FICHIER INTROUVABLE ! Vérifier {weights_path}")
+            raise FileNotFoundError(weights_path)
         else:
-            self.get_logger().info("✅ Fichier trouvé ! Chargement...")
+            self.get_logger().info(f"✅ Poids trouvés : {weights_path}")
 
-        self.model_path = weights_path
+        self.model = YOLO(weights_path)
+        self.model.eval()
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.model.to(device)
+        self.get_logger().info(f"🚀 YOLO lancé sur : {device}")
+
         self.camera_topic = '/fsds/cam1/image_color'
+        self.bridge = CvBridge()
 
-        # Couleurs (BGR)
+        # Couleurs (BGR) pour markers RViz
         self.COLORS = {
-            0: (0, 255, 255),
-            1: (255, 0, 0),
-            2: (0, 255, 255),
+            0: (0, 255, 255),   # JAUNE
+            1: (255, 0, 0),     # BLEU
+            2: (0, 255, 255),   # JAUNE
         }
-
-        # Noms personnalisés
         self.CUSTOM_NAMES = {
             0: "JAUNE",
             1: "BLEU",
             2: "JAUNE",
         }
 
-        self.get_logger().info(f"🔧 Chargement modèle : {self.model_path}")
-        try:
-            self.model = YOLO(self.model_path)
-        except Exception as e:
-            self.get_logger().error(f"❌ Erreur modèle : {e}")
-            raise e
+        # Publisher MarkerArray
+        self.cones_pub = self.create_publisher(MarkerArray, '/cones_detected', 10)
 
-        # 🔹 MODE INFÉRENCE
-        self.model.eval()
-
-        # 🔹 CHOIX DU DEVICE
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model.to(device)
-        self.get_logger().info(f"🚀 YOLO lancé sur : {device}")
-
-        self.bridge = CvBridge()
-
-        # QoS Robustesse
+        # Subscriber image
         self.subscription = self.create_subscription(
-            Image,
-            self.camera_topic,
-            self.listener_callback,
-            qos_profile_sensor_data
+            Image, self.camera_topic, self.listener_callback, qos_profile_sensor_data
         )
-
-        self.get_logger().info("✅ Perception lancée. Noms et couleurs corrigés.")
+        self.get_logger().info("✅ YOLO perception lancée")
 
     def listener_callback(self, msg):
         try:
-            # 1. Réception
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             display_frame = cv_image.copy()
 
-            # 2. Inférence
-            with torch.no_grad():   # 🔹 AJOUT
+            with torch.no_grad():
                 results = self.model(cv_image, verbose=False, conf=0.5)
 
-            # 3. Traitement
+            marker_array = MarkerArray()
+            box_id = 0
+
             for box in results[0].boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
 
-                name_display = self.CUSTOM_NAMES.get(
-                    cls_id, self.model.names[cls_id]
-                )
+                label = self.CUSTOM_NAMES.get(cls_id, str(cls_id))
+                color_bgr = self.COLORS.get(cls_id, (255, 165, 0))  # ORANGE défaut
 
-                label = f"{name_display} {conf:.2f}"
-                color = self.COLORS.get(cls_id, (255, 255, 255))
+                # ---- Marker RViz ----
+                marker = Marker()
+                marker.id = box_id
+                marker.type = Marker.SPHERE
+                marker.action = Marker.ADD
+                marker.pose.position.x = 0.0  # position locale, cone_fusion fera transformation globale
+                marker.pose.position.y = 0.0
+                marker.pose.position.z = 0.0
+                marker.scale.x = 0.3
+                marker.scale.y = 0.3
+                marker.scale.z = 0.5
+                marker.color.a = 1.0
+                marker.color.r = color_bgr[2]/255  # OpenCV BGR → RViz RGB
+                marker.color.g = color_bgr[1]/255
+                marker.color.b = color_bgr[0]/255
+                marker.text = label
+                marker_array.markers.append(marker)
 
-                cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
-
+                # ---- Affichage YOLO ----
+                cv2.rectangle(display_frame, (x1, y1), (x2, y2), color_bgr, 2)
                 t_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-                cv2.rectangle(
-                    display_frame, (x1, y1 - 20),
-                    (x1 + t_size[0], y1), color, -1
-                )
-                cv2.putText(
-                    display_frame, label, (x1, y1 - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1
-                )
+                cv2.rectangle(display_frame, (x1, y1-20), (x1+t_size[0], y1), color_bgr, -1)
+                cv2.putText(display_frame, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1)
 
-            # 4. Affichage
+                box_id += 1
+
+            # Publish MarkerArray
+            self.cones_pub.publish(marker_array)
+
+            # Show frame
             cv2.imshow("YOLO FINAL", display_frame)
             cv2.waitKey(1)
 
         except Exception as e:
-            self.get_logger().error(f"❌ Erreur Display : {e}")
+            self.get_logger().error(f"❌ Erreur YOLO callback : {e}")
 
 def main(args=None):
     rclpy.init(args=args)
@@ -129,5 +122,5 @@ def main(args=None):
         if rclpy.ok():
             rclpy.shutdown()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
