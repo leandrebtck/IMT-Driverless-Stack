@@ -8,9 +8,7 @@ from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from visualization_msgs.msg import Marker, MarkerArray
 
-
 class ConeFusion(Node):
-
     def __init__(self):
         super().__init__('cone_fusion')
 
@@ -30,32 +28,40 @@ class ConeFusion(Node):
         )
 
         # -------- PARAMS --------
-        self.cluster_dist = 0.5   # distance max entre points d’un même cône
-        self.min_points = 5       # points min pour valider un cône
+        self.cluster_dist = 1.0   # distance max entre points d’un même cône (plus souple)
+        self.min_points = 1       # points min pour valider un cône (debug)
 
         self.get_logger().info("Cone fusion node started")
 
     # -----------------------------------------------------
-
     def lidar_callback(self, msg):
+        # ---- Convertir le PointCloud2 en array numpy ----
         points = np.array([
             [p[0], p[1], p[2]]
             for p in point_cloud2.read_points(
                 msg, skip_nans=True, field_names=("x", "y", "z")
             )
-            if -0.2 < p[2] < 0.5   # hauteur cône
         ])
 
-        if len(points) == 0:
+        print(f"\nNombre de points LiDAR reçus: {len(points)}")
+        if len(points) > 0:
+            print("Exemples de points (x,y,z) :", points[:10])
+
+        # ---- Filtrage hauteur cônes FSDS ----
+        filtered_points = points[(points[:,2] > 0.0) & (points[:,2] < 1.5)]
+
+        if len(filtered_points) == 0:
+            print("Aucun point après filtrage hauteur")
             return
 
-        clusters = self.cluster_points(points)
+        # ---- Clustering ----
+        clusters = self.cluster_points(filtered_points)
+        print(f"Nombre de clusters détectés: {len(clusters)}")
 
         marker_array = MarkerArray()
         cone_id = 0
 
-        print("\n--- CONES DETECTED (vehicle frame) ---")
-
+        print("--- CONES DETECTED (vehicle frame) ---")
         for cluster in clusters:
             if len(cluster) < self.min_points:
                 continue
@@ -64,9 +70,9 @@ class ConeFusion(Node):
             x, y = centroid[0], centroid[1]
 
             # ---- PRINT TO TERMINAL ----
-            print(f"Cone {cone_id}: x = {x:.2f} m | y = {y:.2f} m")
+            print(f"Cone {cone_id}: x = {x:.2f} m | y = {y:.2f} m | points in cluster: {len(cluster)}")
 
-            # ---- Marker ----
+            # ---- Marker pour RViz ----
             m = Marker()
             m.header.frame_id = "base_link"
             m.id = cone_id
@@ -79,17 +85,17 @@ class ConeFusion(Node):
             m.pose.position.y = y
             m.pose.position.z = 0.25
             m.color.a = 1.0
-            m.color.r = 1.0  # rouge par défaut
+            m.color.r = 1.0
             m.color.g = 0.5
             m.color.b = 0.0
 
             marker_array.markers.append(m)
             cone_id += 1
 
+        # ---- Publier les cônes ----
         self.cones_pub.publish(marker_array)
 
     # -----------------------------------------------------
-
     def cluster_points(self, points):
         clusters = []
         used = np.zeros(len(points), dtype=bool)
@@ -112,16 +118,13 @@ class ConeFusion(Node):
 
         return clusters
 
-
 # ---------------------------------------------------------
-
 def main():
     rclpy.init()
     node = ConeFusion()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
