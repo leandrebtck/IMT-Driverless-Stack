@@ -8,7 +8,7 @@ from pyqtgraph.Qt import QtWidgets, QtCore
 import numpy as np
 
 class CircuitMap(Node):
-    def __init__(self):
+    def __init__(self, min_dist=0.8):
         super().__init__('circuit_map')
 
         # Subscribers ROS2
@@ -16,15 +16,16 @@ class CircuitMap(Node):
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
         # Stockage global
-        self.cones_global = set()
+        self.cones_global = []
         self.car_pos = (0.0, 0.0)
+        self.min_dist = min_dist  # distance min entre 2 cônes
 
         # ---- Setup PyQtGraph ----
         self.app = QtWidgets.QApplication([])
         self.win = pg.GraphicsLayoutWidget(show=True, title="Circuit Map")
         self.win.resize(800, 800)
         self.plot = self.win.addPlot()
-        self.plot.setAspectLocked(False)  # permet zoom/dézoom dynamique
+        self.plot.setAspectLocked(False)
         self.plot.showGrid(x=True, y=True)
         self.plot.setLabel('left', 'Y (m)')
         self.plot.setLabel('bottom', 'X (m)')
@@ -38,7 +39,7 @@ class CircuitMap(Node):
         # Timer pour rafraîchir PyQtGraph et ROS
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(50)  # 20 Hz pour fluidité
+        self.timer.start(50)  # 20 Hz
 
         self.get_logger().info("CircuitMap node started")
 
@@ -46,20 +47,25 @@ class CircuitMap(Node):
         for marker in msg.markers:
             x = marker.pose.position.x
             y = marker.pose.position.y
-            key = (round(x, 2), round(y, 2))
-            if key not in self.cones_global:
-                self.cones_global.add(key)
+            new_point = np.array([x, y])
+            if self.is_new_cone(new_point):
+                self.cones_global.append(new_point)
 
     def odom_callback(self, msg: Odometry):
         self.car_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
 
+    def is_new_cone(self, point):
+        """Retourne True si le point est assez éloigné de tous les points existants"""
+        for existing in self.cones_global:
+            if np.linalg.norm(existing - point) < self.min_dist:
+                return False
+        return True
+
     def update(self):
-        # Traiter les callbacks ROS
         rclpy.spin_once(self, timeout_sec=0)
 
-        # Affichage des cônes
         if self.cones_global:
-            cones_array = np.array(list(self.cones_global))
+            cones_array = np.array(self.cones_global)
             self.cones_scatter.setData(cones_array[:,0], cones_array[:,1])
 
         # Affichage voiture
@@ -80,7 +86,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = CircuitMap()
     try:
-        node.app.exec_()  # boucle Qt principale
+        node.app.exec_()
     except KeyboardInterrupt:
         pass
     finally:
