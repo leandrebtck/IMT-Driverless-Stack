@@ -7,17 +7,26 @@ import numpy as np
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from visualization_msgs.msg import Marker, MarkerArray
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+
 
 class ConeFusion(Node):
     def __init__(self):
         super().__init__('cone_fusion')
+
+        # ---- QoS adapté pour sensor_data (LiDAR) ----
+        qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
 
         # -------- SUBSCRIBER --------
         self.create_subscription(
             PointCloud2,
             '/lidar/points',
             self.lidar_callback,
-            10
+            qos
         )
 
         # -------- PUBLISHER --------
@@ -27,9 +36,9 @@ class ConeFusion(Node):
             10
         )
 
-        # -------- PARAMS --------
-        self.cluster_dist = 1.0   # distance max entre points d’un même cône (plus souple)
-        self.min_points = 1       # points min pour valider un cône (debug)
+        # -------- PARAMS CLUSTERING --------
+        self.cluster_dist = 1.0   # distance max entre points d’un même cône
+        self.min_points = 1       # points min pour valider un cône
 
         self.get_logger().info("Cone fusion node started")
 
@@ -54,7 +63,7 @@ class ConeFusion(Node):
             print("Aucun point après filtrage hauteur")
             return
 
-        # ---- Clustering ----
+        # ---- Clustering des points ----
         clusters = self.cluster_points(filtered_points)
         print(f"Nombre de clusters détectés: {len(clusters)}")
 
@@ -92,7 +101,7 @@ class ConeFusion(Node):
             marker_array.markers.append(m)
             cone_id += 1
 
-        # ---- Publier les cônes ----
+        # ---- Publier les cônes détectés ----
         self.cones_pub.publish(marker_array)
 
     # -----------------------------------------------------
@@ -118,6 +127,7 @@ class ConeFusion(Node):
 
         return clusters
 
+
 # ---------------------------------------------------------
 def main():
     rclpy.init()
@@ -125,6 +135,7 @@ def main():
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
