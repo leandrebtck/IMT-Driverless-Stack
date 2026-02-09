@@ -7,26 +7,20 @@ import numpy as np
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from visualization_msgs.msg import Marker, MarkerArray
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+from rclpy.qos import qos_profile_sensor_data
 
 
 class ConeFusion(Node):
     def __init__(self):
-        super().__init__('cone_fusion')
-
-        # ---- QoS adapté pour sensor_data (LiDAR) ----
-        qos = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10
-        )
+        super().__init__('cone_fusion_node')
 
         # -------- SUBSCRIBER --------
-        self.create_subscription(
+        # On s'abonne au topic filtré du LiDAR
+        self.subscription = self.create_subscription(
             PointCloud2,
-            '/lidar/points',
+            '/lidar/obstacles',
             self.lidar_callback,
-            qos
+            qos_profile_sensor_data
         )
 
         # -------- PUBLISHER --------
@@ -38,33 +32,27 @@ class ConeFusion(Node):
 
         # -------- PARAMS CLUSTERING --------
         self.cluster_dist = 1.0   # distance max entre points d’un même cône
-        self.min_points = 1       # points min pour valider un cône
+        self.min_points = 1       # points min pour valider un cône (pour debug)
 
-        self.get_logger().info("Cone fusion node started")
+        self.get_logger().info("🟢 Cone Fusion node started")
 
     # -----------------------------------------------------
     def lidar_callback(self, msg):
-        # ---- Convertir le PointCloud2 en array numpy ----
+        # Convertir le PointCloud2 en numpy array
         points = np.array([
             [p[0], p[1], p[2]]
-            for p in point_cloud2.read_points(
-                msg, skip_nans=True, field_names=("x", "y", "z")
-            )
+            for p in point_cloud2.read_points(msg, field_names=("x","y","z"), skip_nans=True)
         ])
 
-        print(f"\nNombre de points LiDAR reçus: {len(points)}")
-        if len(points) > 0:
-            print("Exemples de points (x,y,z) :", points[:10])
-
-        # ---- Filtrage hauteur cônes FSDS ----
-        filtered_points = points[(points[:,2] > 0.0) & (points[:,2] < 1.5)]
-
-        if len(filtered_points) == 0:
-            print("Aucun point après filtrage hauteur")
+        if points.shape[0] == 0:
             return
 
-        # ---- Clustering des points ----
-        clusters = self.cluster_points(filtered_points)
+        # Debug : afficher nombre de points
+        print(f"\nNombre de points LiDAR reçus: {len(points)}")
+        print("Exemples de points (x,y,z) :", points[:10])
+
+        # Clustering
+        clusters = self.cluster_points(points)
         print(f"Nombre de clusters détectés: {len(clusters)}")
 
         marker_array = MarkerArray()
@@ -75,13 +63,14 @@ class ConeFusion(Node):
             if len(cluster) < self.min_points:
                 continue
 
+            # Centroid du cluster = position du cône
             centroid = np.mean(cluster, axis=0)
             x, y = centroid[0], centroid[1]
 
-            # ---- PRINT TO TERMINAL ----
+            # Affichage dans le terminal pour le SLAM
             print(f"Cone {cone_id}: x = {x:.2f} m | y = {y:.2f} m | points in cluster: {len(cluster)}")
 
-            # ---- Marker pour RViz ----
+            # Marker RViz (optionnel pour visualisation)
             m = Marker()
             m.header.frame_id = "base_link"
             m.id = cone_id
@@ -101,22 +90,24 @@ class ConeFusion(Node):
             marker_array.markers.append(m)
             cone_id += 1
 
-        # ---- Publier les cônes détectés ----
+        # Publication pour SLAM / RViz
         self.cones_pub.publish(marker_array)
 
     # -----------------------------------------------------
     def cluster_points(self, points):
+        """
+        Clustering simple basé sur distance euclidienne (x,y)
+        """
         clusters = []
         used = np.zeros(len(points), dtype=bool)
 
         for i in range(len(points)):
             if used[i]:
                 continue
-
             cluster = [points[i]]
             used[i] = True
 
-            for j in range(i + 1, len(points)):
+            for j in range(i+1, len(points)):
                 if used[j]:
                     continue
                 if np.linalg.norm(points[i][:2] - points[j][:2]) < self.cluster_dist:
@@ -129,12 +120,17 @@ class ConeFusion(Node):
 
 
 # ---------------------------------------------------------
-def main():
-    rclpy.init()
+def main(args=None):
+    rclpy.init(args=args)
     node = ConeFusion()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
