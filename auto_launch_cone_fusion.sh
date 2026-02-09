@@ -1,93 +1,90 @@
 #!/bin/bash
 
 ###########################################
-# CONFIGURATION
+# CONFIG
 ###########################################
 
-# Adapte ce chemin si ton dossier s'appelle différemment
-REPO_DIR="$HOME/IMT-Driverless-Stack" 
-# Je suppose que tes scripts sont à la racine ou dans un sous-dossier specifique.
-# Si tes fichiers sont à la racine du repo, laisse juste $REPO_DIR
-PYTHON_STACK="$REPO_DIR" 
+SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
+SCRIPT_DIR="$HOME/IMT-Driverless-Stack/python_stack"
+ROS_DISTRO="galactic"
 
-ROS_DISTRO="galactic" # ou "humble" ou "foxy" selon ta version
+# S'assurer que le dossier temporaire existe
+mkdir -p /tmp/imt_driverless_cone_fusion
 
-###########################################
-# FONCTIONS UTILITAIRES
-###########################################
-
-# Fonction pour ouvrir un onglet/fenêtre proprement
-launch_node() {
-    local title=$1
-    local script_name=$2
-    
-    echo "🚀 Lancement de $title..."
-    gnome-terminal --tab --title="$title" -- bash -c "
-        source /opt/ros/$ROS_DISTRO/setup.bash;
-        [ -f ~/ros2_ws/install/setup.bash ] && source ~/ros2_ws/install/setup.bash;
-        cd $PYTHON_STACK;
-        echo '-----------------------------------';
-        echo '🟢 PROCESS: $title';
-        echo '📂 SCRIPT : $script_name';
-        echo '-----------------------------------';
-        python3 $script_name;
-        echo '❌ Processus terminé.';
-        exec bash
-    "
-    sleep 1 # Petite pause pour laisser le temps au noeud de s'initialiser
-}
-
-###########################################
-# VÉRIFICATION DES DÉPENDANCES
-###########################################
-
-command -v python3 >/dev/null 2>&1 || { echo "❌ python3 non trouvé"; exit 1; }
-command -v ros2 >/dev/null 2>&1 || { echo "❌ ros2 non trouvé"; exit 1; }
-
-if [ ! -d "$PYTHON_STACK" ]; then
-    echo "❌ Le dossier $PYTHON_STACK n'existe pas ! Vérifie la variable REPO_DIR."
-    exit 1
+# SOURCE ROS2
+source /opt/ros/$ROS_DISTRO/setup.bash
+if [ -f ~/ros2_ws/install/setup.bash ]; then
+    source ~/ros2_ws/install/setup.bash
 fi
 
 ###########################################
-# LANCEMENT DE LA STACK (ORDRE LOGIQUE)
+# 1. LANCEMENT SIMULATEUR ou ROSBAG
 ###########################################
+echo "🎮 Lancement Simulateur / Rosbag..."
+gnome-terminal --title="SIMULATEUR / ROSBAG" -- bash -c "
+cd $SIM_PATH
+# FSDS.sh pour simulateur ou remplacer par 'ros2 bag play ...' si replay
+./FSDS.sh -windowed -ResX=640 -ResY=480
+exec bash" &
+sleep 5
 
-echo "=========================================="
-echo "🏎️  IMT DRIVERLESS - DÉMARRAGE SYSTÈME"
-echo "=========================================="
+###########################################
+# 2. LANCEMENT GLOBAL DRIVE
+###########################################
+echo "🏎️ Lancement Global Drive..."
+gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
+source /opt/ros/$ROS_DISTRO/setup.bash
+source ~/ros2_ws/install/setup.bash
+cd $SCRIPT_DIR
+python3 global_drive.py
+exec bash" &
+sleep 2
 
-# 1. PILOTAGE (Pour bouger la voiture)
-launch_node "1. Global Pilot (Clavier)" "global_drive.py"
+###########################################
+# 3. LANCEMENT LIDAR ROS
+###########################################
+echo "🟢 Lancement lidar_ros.py (filtre sol)..."
+gnome-terminal --title="LIDAR ROS" -- bash -c "
+source /opt/ros/$ROS_DISTRO/setup.bash
+source ~/ros2_ws/install/setup.bash
+cd $SCRIPT_DIR
+python3 lidar_ros.py
+exec bash" &
+sleep 1
 
-# 2. PERCEPTION LIDAR (La chaîne de traitement)
-# D'abord on filtre le sol
-launch_node "2. Lidar Filter (Sol)" "lidar_ros.py"
+###########################################
+# 4. LANCEMENT LIDAR CLUSTER
+###########################################
+echo "🔵 Lancement lidar_cluster.py (nuage -> objets locaux)..."
+gnome-terminal --title="LIDAR CLUSTER" -- bash -c "
+source /opt/ros/$ROS_DISTRO/setup.bash
+source ~/ros2_ws/install/setup.bash
+cd $SCRIPT_DIR
+python3 lidar_cluster.py
+exec bash" &
+sleep 1
 
-# Ensuite on clusterise (transforme points en objets)
-launch_node "3. Lidar Cluster (DBSCAN)" "lidar_cluster.py"
+###########################################
+# 5. LANCEMENT CONE FUSION
+###########################################
+echo "🔴 Lancement cone_fusion.py (carte globale)..."
+gnome-terminal --title="CONE FUSION" -- bash -c "
+source /opt/ros/$ROS_DISTRO/setup.bash
+source ~/ros2_ws/install/setup.bash
+cd $SCRIPT_DIR
+python3 cone_fusion.py
+exec bash" &
+sleep 1
 
-# 3. MAPPING & SLAM
-# On fusionne les objets dans la carte globale
-launch_node "4. Cone Fusion (Mapping)" "cone_fusion.py"
+###########################################
+# 6. LANCEMENT CIRCUIT MAP
+###########################################
+echo "📍 Lancement circuit_map.py (affichage)..."
+gnome-terminal --title="CIRCUIT MAP" -- bash -c "
+source /opt/ros/$ROS_DISTRO/setup.bash
+source ~/ros2_ws/install/setup.bash
+cd $SCRIPT_DIR
+python3 circuit_map.py
+exec bash" &
 
-# 4. VISUALISATION
-# On affiche la carte
-launch_node "5. Circuit Map (Visu)" "circuit_map.py"
-
-# 5. PERCEPTION CAMERA (Optionnel / Indépendant pour l'instant)
-# Vérification spécifique pour YOLO
-echo "🚀 Lancement de 6. YOLO Perception..."
-gnome-terminal --tab --title="6. YOLO Perception" -- bash -c "
-    source /opt/ros/$ROS_DISTRO/setup.bash;
-    cd $PYTHON_STACK;
-    if [ ! -d weights ]; then
-        echo '⚠️  ATTENTION : Dossier weights introuvable !';
-        echo 'Le script yolo_ros.py risque de planter.';
-    fi
-    python3 yolo_ros.py;
-    exec bash
-"
-
-echo "✅ Tous les nœuds ont été lancés dans des onglets séparés."
-echo "💡 Astuce : Si rien ne s'affiche, vérifie que le simulateur FSDS est bien lancé."
+echo "✅ Tous les nœuds ont été lancés dans l'ordre demandé."
