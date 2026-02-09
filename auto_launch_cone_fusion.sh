@@ -3,6 +3,16 @@
 ###########################################
 # CONFIG
 ###########################################
+# Vérifie si sklearn est installé, sinon l'installe
+python3 - <<'EOF'
+try:
+    import sklearn
+    print("✅ scikit-learn déjà installé")
+except ImportError:
+    import subprocess, sys
+    print("📦 Installation de scikit-learn...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "scikit-learn"])
+EOF
 
 REPO_DIR="$HOME/IMT-Driverless-Stack"
 PYTHON_STACK="$REPO_DIR/python_stack"
