@@ -15,7 +15,7 @@ class CircuitMap(Node):
         self.create_subscription(MarkerArray, '/cones_relative', self.cones_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
-        # Stockage des cônes globaux et de la voiture
+        # Stockage des cônes globaux et position voiture
         self.cones_global = {}  # {(x, y): couleur}
         self.car_pos = (0.0, 0.0)
 
@@ -48,7 +48,6 @@ class CircuitMap(Node):
             y = marker.pose.position.y
             key = (round(x,2), round(y,2))
             if key not in self.cones_global:
-                # couleur rouge par défaut
                 self.cones_global[key] = (marker.color.r*255,
                                           marker.color.g*255,
                                           marker.color.b*255)
@@ -59,22 +58,18 @@ class CircuitMap(Node):
     def update_plot(self):
         rclpy.spin_once(self, timeout_sec=0)
 
-        # Affichage voiture
-        self.car_scatter.setData([self.car_pos[0]], [self.car_pos[1]])
+        # Affichage voiture (toujours au centre)
+        self.car_scatter.setData([0.0], [0.0])
 
-        # Affichage des cônes globaux
+        # Affichage des cônes globaux relatifs à la voiture
         if self.cones_global:
-            coords = np.array(list(self.cones_global.keys()))
+            coords = np.array([[x - self.car_pos[0], y - self.car_pos[1]] for x,y in self.cones_global.keys()])
             colors = [pg.mkBrush(r,g,b,200) for r,g,b in self.cones_global.values()]
             self.cones_scatter.setData(coords[:,0], coords[:,1], brush=colors)
 
-        # Vue centrée sur la voiture ±20 m
-        x_min = self.car_pos[0] - 20
-        x_max = self.car_pos[0] + 20
-        y_min = self.car_pos[1] - 20
-        y_max = self.car_pos[1] + 20
-        self.plot.setXRange(x_min, x_max)
-        self.plot.setYRange(y_min, y_max)
+        # Limites très larges pour ne pas tronquer (-1000 m à 1000 m)
+        self.plot.setXRange(-100, 100)
+        self.plot.setYRange(-100, 100)
 
 def main(args=None):
     rclpy.init(args=args)
