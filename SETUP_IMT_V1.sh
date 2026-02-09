@@ -155,10 +155,14 @@ else
 fi
 
 echo "✅ Python Client FSDS installé avec succès !"
-
+################################
+# 11) pour cone fusion
+################################
+sudo apt update
+sudo apt install ros-galactic-sensor-msgs-py
 
 ################################
-# 11) Fin
+# 12) Fin
 ################################
 
 echo ""
