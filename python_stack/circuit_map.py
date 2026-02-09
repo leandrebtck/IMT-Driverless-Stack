@@ -4,13 +4,14 @@ import rclpy
 from rclpy.node import Node
 from visualization_msgs.msg import MarkerArray
 import matplotlib.pyplot as plt
+import numpy as np
 
 class CircuitMap(Node):
     def __init__(self):
         super().__init__('circuit_map_node')
 
-        # Liste pour stocker tous les cônes détectés
-        self.all_cones = []
+        # Liste pour stocker les cônes uniques
+        self.all_cones = np.empty((0,2))
 
         # Subscriber
         self.create_subscription(
@@ -21,24 +22,36 @@ class CircuitMap(Node):
         )
 
         # Setup matplotlib
-        plt.ion()  # mode interactif
+        plt.ion()
         self.fig, self.ax = plt.subplots()
         self.ax.set_title("Carte du circuit (cônes détectés)")
         self.ax.set_xlabel("X (m)")
         self.ax.set_ylabel("Y (m)")
-        self.scatter = None
 
         self.get_logger().info("Circuit mapping node started")
 
     def cones_callback(self, msg):
-        # Ajouter les coordonnées de tous les cônes reçus
+        new_cones = []
+
         for marker in msg.markers:
             x = marker.pose.position.x
             y = marker.pose.position.y
-            self.all_cones.append((x, y))
+            new_cones.append([x, y])
 
-        # Mettre à jour le plot
-        self.update_plot()
+        if new_cones:
+            new_cones = np.array(new_cones)
+
+            # Ajouter seulement les cônes nouveaux (distance > 0.2 m)
+            for pt in new_cones:
+                if self.all_cones.shape[0] == 0:
+                    self.all_cones = np.vstack([self.all_cones, pt])
+                else:
+                    dists = np.linalg.norm(self.all_cones - pt, axis=1)
+                    if np.all(dists > 0.2):  # epsilon = 20 cm
+                        self.all_cones = np.vstack([self.all_cones, pt])
+
+            # Mise à jour du plot
+            self.update_plot()
 
     def update_plot(self):
         self.ax.clear()
@@ -46,11 +59,11 @@ class CircuitMap(Node):
         self.ax.set_xlabel("X (m)")
         self.ax.set_ylabel("Y (m)")
 
-        if self.all_cones:
-            xs, ys = zip(*self.all_cones)
-            self.ax.scatter(xs, ys, c='red', s=50, label='Cônes')
+        if self.all_cones.shape[0] > 0:
+            self.ax.scatter(self.all_cones[:,0], self.all_cones[:,1], c='red', s=50, label='Cônes')
             self.ax.legend()
-        plt.pause(0.001)  # pause courte pour rafraîchir le plot
+
+        plt.pause(0.001)
 
 def main(args=None):
     rclpy.init(args=args)
