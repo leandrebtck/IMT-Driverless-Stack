@@ -1,101 +1,100 @@
 #!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
-from visualization_msgs.msg import MarkerArray
+from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import Odometry
-import matplotlib.pyplot as plt
-import numpy as np
 from math import cos, sin
 
-class CircuitMapGlobal(Node):
+class GlobalCircuit(Node):
     def __init__(self):
-        super().__init__('circuit_map_global_node')
+        super().__init__('global_circuit_node')
 
-        # Stockage des cônes uniques en coordonnées globales
-        self.global_cones = []
+        # Subscriber
+        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.create_subscription(MarkerArray, '/cones_relative', self.cones_callback, 10)
 
-        # Position et orientation du véhicule
+        # Publisher pour RViz
+        self.global_cones_pub = self.create_publisher(MarkerArray, '/cones_global', 10)
+        self.vehicle_pub = self.create_publisher(MarkerArray, '/vehicle_marker', 10)
+
+        # Position et orientation de la voiture
         self.x_vehicle = 0.0
         self.y_vehicle = 0.0
-        self.theta = 0.0  # yaw
+        self.theta = 0.0
 
-        # Subscribers
-        self.create_subscription(MarkerArray, '/cones_relative', self.cones_callback, 10)
-        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        # Stockage des cônes uniques
+        self.global_cones = []
 
-        # Setup matplotlib
-        plt.ion()
-        self.fig, self.ax = plt.subplots()
-        self.ax.set_title("Carte globale du circuit")
-        self.ax.set_xlabel("X (m)")
-        self.ax.set_ylabel("Y (m)")
-
-        self.get_logger().info("Circuit mapping (global) node started")
-
-    def odom_callback(self, msg: Odometry):
+    def odom_callback(self, msg):
         self.x_vehicle = msg.pose.pose.position.x
         self.y_vehicle = msg.pose.pose.position.y
 
-        # Extraction du yaw à partir du quaternion
+        # Calcul du yaw
         q = msg.pose.pose.orientation
-        self.theta = np.arctan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
+        self.theta = 2 * atan2(q.z, q.w)  # approximation 2D
 
-        # Mise à jour du plot
-        self.update_plot()
+        # Publier la position de la voiture comme Marker
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "vehicle"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = self.x_vehicle
+        marker.pose.position.y = self.y_vehicle
+        marker.pose.position.z = 0.25
+        marker.scale.x = 0.5
+        marker.scale.y = 0.5
+        marker.scale.z = 0.5
+        marker.color.a = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 0.0
+        marker.color.b = 1.0
 
-    def cones_callback(self, msg: MarkerArray):
-        for marker in msg.markers:
-            # Coordonnées relatives au véhicule
-            x_rel = marker.pose.position.x
-            y_rel = marker.pose.position.y
+        ma = MarkerArray()
+        ma.markers.append(marker)
+        self.vehicle_pub.publish(ma)
 
-            # Transformation en coordonnées globales
-            x_global = self.x_vehicle + cos(self.theta)*x_rel - sin(self.theta)*y_rel
-            y_global = self.y_vehicle + sin(self.theta)*x_rel + cos(self.theta)*y_rel
+    def cones_callback(self, msg):
+        ma = MarkerArray()
+        for m in msg.markers:
+            # Transformation en global
+            x_global = self.x_vehicle + cos(self.theta) * m.pose.position.x - sin(self.theta) * m.pose.position.y
+            y_global = self.y_vehicle + sin(self.theta) * m.pose.position.x + cos(self.theta) * m.pose.position.y
 
-            # Ajouter uniquement si nouveau (distance > 0.2 m)
-            if not self.is_duplicate(x_global, y_global):
-                self.global_cones.append([x_global, y_global])
+            # Eviter doublons
+            if not any((abs(c[0]-x_global)<0.2 and abs(c[1]-y_global)<0.2) for c in self.global_cones):
+                self.global_cones.append((x_global, y_global))
 
-        self.update_plot()
+                # Créer un Marker global
+                marker = Marker()
+                marker.header.frame_id = "map"
+                marker.header.stamp = self.get_clock().now().to_msg()
+                marker.ns = "cones"
+                marker.id = len(self.global_cones)
+                marker.type = Marker.CYLINDER
+                marker.action = Marker.ADD
+                marker.pose.position.x = x_global
+                marker.pose.position.y = y_global
+                marker.pose.position.z = 0.25
+                marker.scale.x = 0.3
+                marker.scale.y = 0.3
+                marker.scale.z = 0.5
+                marker.color.a = 1.0
+                marker.color.r = 1.0
+                marker.color.g = 0.0
+                marker.color.b = 0.0
+                ma.markers.append(marker)
 
-    def is_duplicate(self, x, y, epsilon=0.2):
-        if not self.global_cones:
-            return False
-        dists = np.linalg.norm(np.array(self.global_cones) - np.array([x,y]), axis=1)
-        return np.any(dists < epsilon)
-
-    def update_plot(self):
-        self.ax.clear()
-        self.ax.set_title("Carte globale du circuit")
-        self.ax.set_xlabel("X (m)")
-        self.ax.set_ylabel("Y (m)")
-
-        # Affichage des cônes
-        if self.global_cones:
-            cones = np.array(self.global_cones)
-            self.ax.scatter(cones[:,0], cones[:,1], c='red', s=30, label='Cônes')
-
-        # Affichage de la position du véhicule
-        self.ax.scatter(self.x_vehicle, self.y_vehicle, c='blue', s=60, label='Voiture')
-
-        self.ax.legend()
-        self.ax.axis('equal')  # garde les proportions réelles
-        plt.pause(0.001)
+        self.global_cones_pub.publish(ma)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = CircuitMapGlobal()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-        plt.ioff()
-        plt.show()
+    node = GlobalCircuit()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == "__main__":
     main()
