@@ -63,7 +63,9 @@ class LidarClusteringNode(Node):
             marker.header = msg.header # Garde le timestamp et frame_id (ex: velodyne)
             marker.ns = "lidar_clusters"
             marker.id = int(label)
-            marker.type = Marker.CYLINDER
+
+            
+            marker.type = Marker.SPHERE  # On veut une sphère pour différencier l'affichage par défault du simu et de nos calculs
             marker.action = Marker.ADD
             
             # Position
@@ -72,12 +74,18 @@ class LidarClusteringNode(Node):
             marker.pose.position.z = center[2]
             
             marker.pose.orientation.w = 1.0
-            marker.scale.x = 0.2 # Diamètre approx d'un cône
-            marker.scale.y = 0.2
+            
+            # Taille
+            marker.scale.x = 0.4
+            marker.scale.y = 0.4
             marker.scale.z = 0.4
 
-            # Couleur (Gris pour "non identifié" pour l'instant)
-            marker.color = ColorRGBA(r=0.7, g=0.7, b=0.7, a=1.0)
+            # Couleur (VERT FLUO)
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+            marker.color.a = 1.0 
+
             marker.lifetime.sec = 0
             marker.lifetime.nanosec = 200000000 # 0.2s de vie
 
