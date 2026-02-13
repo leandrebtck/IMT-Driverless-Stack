@@ -7,7 +7,9 @@ import cv2
 from ultralytics import YOLO
 import os
 import sys
-import torch   # 🔹 AJOUT
+import torch  
+from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose #(fusion)
+
 
 class YoloPerceptionNode(Node):
     def __init__(self):
@@ -72,6 +74,14 @@ class YoloPerceptionNode(Node):
             qos_profile_sensor_data
         )
 
+        # AJOUT FUSION:Publisher 
+        # On crée le canal pour envoyer les détections au script de fusion
+        self.publisher = self.create_publisher(
+            Detection2DArray, 
+            '/yolo/detections', 
+            10
+        )
+
         self.get_logger().info("✅ Perception lancée. Noms et couleurs corrigés.")
 
     def listener_callback(self, msg):
@@ -84,6 +94,11 @@ class YoloPerceptionNode(Node):
             with torch.no_grad():   # 🔹 AJOUT
                 results = self.model(cv_image, verbose=False, conf=0.5)
 
+            #AJOUT FUSION: Préparation du message global 
+            # On prépare le paquet vide qui va contenir toutes les boîtes
+            detections_msg = Detection2DArray()
+            detections_msg.header = msg.header  # Très important : on garde la même heure que l'image
+    
             # 3. Traitement
             for box in results[0].boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -109,6 +124,38 @@ class YoloPerceptionNode(Node):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1
                 )
 
+                #AJOUT FUSION : Remplissage du message ROS 
+                # Conversion Coin Haut-Gauche (x1,y1) -> Centre (cx, cy) pour ROS
+                w = float(x2 - x1)
+                h = float(y2 - y1)
+                cx = float(x1 + w / 2.0)
+                cy = float(y1 + h / 2.0)
+
+                # Création de l'objet détection unique
+                detection = Detection2D()
+                detection.header = msg.header
+                
+                # Géométrie de la boîte
+                detection.bbox.center.x = cx
+                detection.bbox.center.y = cy
+                detection.bbox.size_x = w
+                detection.bbox.size_y = h
+
+                # Ce qu'il y a dedans (Classe + Score)
+                hypothesis = ObjectHypothesisWithPose()
+                hypothesis.hypothesis.class_id = str(cls_id) # "0" ou "1"
+                hypothesis.hypothesis.score = conf
+                
+                detection.results.append(hypothesis)
+                
+                # On ajoute cette boîte au paquet global
+                detections_msg.detections.append(detection)
+        
+
+            #AJOUT FUSION: Envoi final
+            # On publie le paquet complet sur le réseau ROS
+            self.publisher.publish(detections_msg)
+    
             # 4. Affichage
             cv2.imshow("YOLO FINAL", display_frame)
             cv2.waitKey(1)
