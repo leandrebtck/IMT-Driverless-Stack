@@ -6,6 +6,7 @@ from cv_bridge import CvBridge
 from ultralytics import YOLO
 import os
 import torch
+import cv2 # Pour l'affichage (optionnel pour sensor)
 from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose
 
 class YoloPerceptionNode(Node):
@@ -41,6 +42,15 @@ class YoloPerceptionNode(Node):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
             results = self.model(cv_image, verbose=False, conf=0.5)
+
+            # CONFIGURATION HEADLESS (AFFICHAGE VIDÉO)
+            # Enlèver les '#' ci-dessous pour voir la fenêtre (déconseillé si vous voulez lancer sensor)
+            # Laisse les '#' pour la performance (ex : sensor fusion)
+            
+            annotated_frame = results[0].plot()        # <----
+            cv2.imshow("YOLO DEBUG VIEW", annotated_frame)   # <----
+            cv2.waitKey(1)     # <----
+            # ====================================================
 
             detections_msg = Detection2DArray()
             detections_msg.header = msg.header 
