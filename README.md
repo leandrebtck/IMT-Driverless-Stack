@@ -68,4 +68,5 @@ Puis :
 bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh"
 ```
 à noter qu'à partir de environ 4/5 m/s , la fusion devient très peu précise
+De plus, il est nécessaire de passer yolo_ros en mode headless pour + de performance
  
