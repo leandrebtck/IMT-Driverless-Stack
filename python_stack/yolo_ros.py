@@ -27,6 +27,19 @@ class YoloPerceptionNode(Node):
 
         self.camera_topic = '/fsds/cam1/image_color'
 
+        # ---------------- COULEURS PAR ID ----------------
+        self.COLORS = {
+            0: (0, 255, 255),   # JAUNE
+            1: (255, 0, 0),     # BLEU
+            2: (0, 120, 255),   # ORANGE
+        }
+
+        self.CUSTOM_NAMES = {
+            0: "JAUNE",
+            1: "BLEU",
+            2: "ORANGE",
+        }
+
         # ---------------- YOLO ----------------
         self.model = YOLO(weights_path)
         self.model.eval()
@@ -52,14 +65,14 @@ class YoloPerceptionNode(Node):
             10
         )
 
-        # 🔥 Détection automatique structure bbox
+        # --------- Détection structure bbox (Iron / Galactic)
         test_bbox = BoundingBox2D()
         if hasattr(test_bbox.center, "position"):
             self.ros_style = "IRON"
-            self.get_logger().info("Structure vision_msgs détectée : ROS IRON style")
         else:
             self.ros_style = "GALACTIC"
-            self.get_logger().info("Structure vision_msgs détectée : ROS GALACTIC style")
+
+        self.get_logger().info(f"Mode ROS détecté : {self.ros_style}")
 
 
     def listener_callback(self, msg):
@@ -81,10 +94,44 @@ class YoloPerceptionNode(Node):
                     cls_id = int(box.cls[0])
                     conf = float(box.conf[0])
 
-                    # -------- Affichage --------
-                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0,255,0), 2)
+                    # -------- COULEUR & NOM --------
+                    name_display = self.CUSTOM_NAMES.get(
+                        cls_id,
+                        self.model.names[cls_id]
+                    )
 
-                    # -------- Données bbox --------
+                    label = f"{name_display} {conf:.2f}"
+                    color = self.COLORS.get(cls_id, (0, 255, 0))  # fallback vert
+
+                    # -------- AFFICHAGE --------
+                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
+
+                    t_size, _ = cv2.getTextSize(
+                        label,
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        1
+                    )
+
+                    cv2.rectangle(
+                        display_frame,
+                        (x1, y1 - 20),
+                        (x1 + t_size[0], y1),
+                        color,
+                        -1
+                    )
+
+                    cv2.putText(
+                        display_frame,
+                        label,
+                        (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 0, 0),
+                        1
+                    )
+
+                    # -------- BBOX ROS --------
                     w = float(x2 - x1)
                     h = float(y2 - y1)
                     cx = float(x1 + w / 2.0)
@@ -94,12 +141,11 @@ class YoloPerceptionNode(Node):
                     detection.header = msg.header
                     detection.bbox = BoundingBox2D()
 
-                    # 🔥 Adaptation automatique
                     if self.ros_style == "IRON":
                         detection.bbox.center.position.x = cx
                         detection.bbox.center.position.y = cy
                         detection.bbox.center.theta = 0.0
-                    else:  # GALACTIC
+                    else:
                         detection.bbox.center.x = cx
                         detection.bbox.center.y = cy
                         detection.bbox.center.theta = 0.0
@@ -116,7 +162,7 @@ class YoloPerceptionNode(Node):
 
             self.publisher.publish(detections_msg)
 
-            cv2.imshow("YOLO", display_frame)
+            cv2.imshow("YOLO FINAL", display_frame)
             cv2.waitKey(1)
 
         except Exception as e:
