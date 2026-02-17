@@ -2,7 +2,6 @@
 set -e
 trap 'echo "❌ Erreur à la ligne $LINENO"' ERR
 
-
 echo "========================================="
 echo "     FSDS INSTALL / UPDATE SCRIPT"
 echo "========================================="
@@ -41,7 +40,6 @@ else
     echo "✅ Simulateur déjà présent."
 fi
 
-
 ############################################
 # 2) CMAKE
 ############################################
@@ -54,7 +52,6 @@ if ! command_exists cmake; then
 else
     echo "✅ CMake déjà installé."
 fi
-
 
 ############################################
 # 3) ROS2 AUTO-DETECTION
@@ -100,12 +97,13 @@ fi
 source /opt/ros/$ROS_DISTRO_FOUND/setup.bash
 add_to_bashrc_if_missing "source /opt/ros/$ROS_DISTRO_FOUND/setup.bash"
 
-
 ############################################
 # 4) DÉPENDANCES ROS2
 ############################################
 
 echo "[4] Installation dépendances ROS2 pour $ROS_DISTRO_FOUND..."
+
+sudo apt update
 
 sudo apt install -y \
     python3-colcon-common-extensions \
@@ -115,12 +113,8 @@ sudo apt install -y \
     ros-$ROS_DISTRO_FOUND-image-transport \
     ros-$ROS_DISTRO_FOUND-tf2-geometry-msgs \
     ros-$ROS_DISTRO_FOUND-joy \
-    ros-$ROS_DISTRO_FOUND-sensor-msgs-py
-
-
-############################################
-# 5) CLONE OU UPDATE FSDS
-############################################
+    ros-$ROS_DISTRO_FOUND-sensor-msgs-py \
+    ros-$ROS_DISTRO_FOUND-vision-msgs
 
 ############################################
 # 5) CLONE OU UPDATE FSDS
@@ -158,7 +152,6 @@ else
     fi
 fi
 
-
 ############################################
 # 7) BUILD ROS2 BRIDGE
 ############################################
@@ -175,7 +168,6 @@ else
 fi
 
 add_to_bashrc_if_missing "source $FSDS_DIR/ros2/install/setup.bash"
-
 
 ############################################
 # 8) PYTHON
@@ -200,7 +192,6 @@ if [ -f "$PY_REQUIREMENTS" ]; then
     python3 -m pip install -r "$PY_REQUIREMENTS"
 fi
 
-
 ############################################
 # 9) OUTILS FENÊTRES
 ############################################
@@ -208,7 +199,6 @@ fi
 echo "[9] Outils gestion fenêtres..."
 
 sudo apt install -y xdotool wmctrl
-
 
 ############################################
 # FIN
