@@ -47,9 +47,9 @@ class YoloPerceptionNode(Node):
             # Enlèver les '#' ci-dessous pour voir la fenêtre (déconseillé si vous voulez lancer sensor)
             # Laisse les '#' pour la performance (ex : sensor fusion)
             
-            #annotated_frame = results[0].plot()        # <----
-            #cv2.imshow("YOLO DEBUG VIEW", annotated_frame)   # <----
-            #cv2.waitKey(1)     # <----
+            annotated_frame = results[0].plot()        # <----
+            cv2.imshow("YOLO DEBUG VIEW", annotated_frame)   # <----
+            cv2.waitKey(1)     # <----
             # ====================================================
 
             detections_msg = Detection2DArray()
