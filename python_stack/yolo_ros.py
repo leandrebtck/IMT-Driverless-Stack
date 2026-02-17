@@ -40,7 +40,7 @@ class YoloPerceptionNode(Node):
         self.COLORS = {
             0: (0, 255, 255),
             1: (255, 0, 0),
-            2: (0, 0, 255),
+            2: (0, 120, 255),  # Orange
         }
 
         self.CUSTOM_NAMES = {
