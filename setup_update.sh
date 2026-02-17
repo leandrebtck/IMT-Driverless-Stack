@@ -120,6 +120,10 @@ sudo apt install -y \
 # 5) CLONE OU UPDATE FSDS
 ############################################
 
+############################################
+# 5) CLONE OU UPDATE FSDS
+############################################
+
 echo "[5] Vérification repo FSDS..."
 
 FSDS_DIR="$HOME/Formula-Student-Driverless-Simulator"
@@ -129,10 +133,23 @@ if [ ! -d "$FSDS_DIR" ]; then
     cd "$FSDS_DIR"
     git checkout tags/v2.2.0
 else
-    echo "✅ Repo déjà présent → mise à jour..."
+    echo "✅ Repo déjà présent."
+
     cd "$FSDS_DIR"
-    git pull
-    git submodule update --init --recursive
+
+    # Vérifie si on est sur une branche
+    CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD)
+
+    if [ -z "$CURRENT_BRANCH" ]; then
+        echo "➡ Repo en detached HEAD (probablement sur un tag)."
+        echo "➡ Pas de git pull pour éviter erreur."
+        git fetch --all
+        git submodule update --init --recursive
+    else
+        echo "➡ Mise à jour branche $CURRENT_BRANCH"
+        git pull
+        git submodule update --init --recursive
+    fi
 fi
 
 
