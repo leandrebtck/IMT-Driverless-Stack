@@ -1,5 +1,7 @@
 #!/bin/bash
 set -e
+trap 'echo "❌ Erreur à la ligne $LINENO"' ERR
+
 
 echo "========================================="
 echo "     FSDS INSTALL / UPDATE SCRIPT"
@@ -159,11 +161,18 @@ fi
 
 echo "[6] Vérification AirLib..."
 
-if [ ! -d "$FSDS_DIR/AirSim/build" ]; then
-    cd "$FSDS_DIR/AirSim"
-    ./setup.sh
+AIRSIM_DIR="$FSDS_DIR/AirSim"
+
+if [ ! -d "$AIRSIM_DIR" ]; then
+    echo "❌ Dossier AirSim introuvable !"
 else
-    echo "✅ AirLib déjà compilé."
+    if [ ! -d "$AIRSIM_DIR/build" ]; then
+        echo "➡ Compilation AirLib..."
+        cd "$AIRSIM_DIR"
+        ./setup.sh
+    else
+        echo "✅ AirLib déjà compilé."
+    fi
 fi
 
 
