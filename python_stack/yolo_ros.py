@@ -132,8 +132,8 @@ class YoloPerceptionNode(Node):
             
             # 5. Affichage Fenêtre
             # Mettre des # ci-dessous pour le mode HEADLESS (Performance)
-            cv2.imshow("YOLO FINAL", display_frame)  # <-- ICI
-            cv2.waitKey(1)                           # <-- ICI
+            #cv2.imshow("YOLO FINAL", display_frame)  # <-- ICI
+            #cv2.waitKey(1)                           # <-- ICI
 
         except Exception as e:
             self.get_logger().error(f"❌ Erreur Display : {e}")
