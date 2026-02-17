@@ -1,188 +1,141 @@
+#!/usr/bin/env python3
+
+import os
+import cv2
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
-
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Pose2D
 from cv_bridge import CvBridge
-
-import cv2
 from ultralytics import YOLO
-import os
-import torch
-
-from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose, BoundingBox2D
-
 
 class YoloPerceptionNode(Node):
 
     def __init__(self):
         super().__init__('yolo_perception_node')
 
-        # ---------------- CONFIG ----------------
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        weights_path = os.path.join(script_dir, 'weights', 'best_FINAL.pt')
+        # Détection version ROS
+        self.ros_distro = os.environ.get("ROS_DISTRO", "unknown").lower()
+        self.get_logger().info(f"ROS Distro détectée : {self.ros_distro}")
 
-        if not os.path.exists(weights_path):
-            raise FileNotFoundError(weights_path)
-
-        self.camera_topic = '/fsds/cam1/image_color'
-
-        # ---------------- COULEURS PAR ID ----------------
-        self.COLORS = {
-            0: (0, 255, 255),   # JAUNE
-            1: (255, 0, 0),     # BLEU
-            2: (0, 120, 255),   # ORANGE
-        }
-
-        self.CUSTOM_NAMES = {
-            0: "JAUNE",
-            1: "BLEU",
-            2: "ORANGE",
-        }
-
-        # ---------------- YOLO ----------------
-        self.model = YOLO(weights_path)
-        self.model.eval()
-
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model.to(device)
-        self.get_logger().info(f"YOLO lancé sur : {device}")
+        # Chargement modèle YOLO
+        self.model = YOLO("best.pt")
 
         self.bridge = CvBridge()
 
-        # ---------------- SUBSCRIBER ----------------
         self.subscription = self.create_subscription(
             Image,
-            self.camera_topic,
-            self.listener_callback,
-            qos_profile_sensor_data
-        )
-
-        # ---------------- PUBLISHER ----------------
-        self.publisher = self.create_publisher(
-            Detection2DArray,
-            '/perception/detections',
+            '/camera/image_raw',
+            self.image_callback,
             10
         )
 
-        # --------- Détection structure bbox (Iron / Galactic)
-        test_bbox = BoundingBox2D()
-        if hasattr(test_bbox.center, "position"):
-            self.ros_style = "IRON"
-        else:
-            self.ros_style = "GALACTIC"
+        self.pose_publisher = self.create_publisher(
+            Pose2D,
+            '/detected_cone_pose',
+            10
+        )
 
-        self.get_logger().info(f"Mode ROS détecté : {self.ros_style}")
+    # ===============================
+    # CALLBACK IMAGE
+    # ===============================
+    def image_callback(self, msg):
 
+        frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
-    def listener_callback(self, msg):
+        results = self.model(frame)
 
-        try:
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            display_frame = cv_image.copy()
+        for result in results:
+            boxes = result.boxes
 
-            with torch.no_grad():
-                results = self.model(cv_image, verbose=False, conf=0.5)
+            for box in boxes:
 
-            detections_msg = Detection2DArray()
-            detections_msg.header = msg.header
+                # Coordonnées
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                confidence = float(box.conf[0])
+                class_id = int(box.cls[0])
+                class_name = self.model.names[class_id]
 
-            if len(results) > 0:
-                for box in results[0].boxes:
+                # Centre bbox
+                cx = int((x1 + x2) / 2)
+                cy = int((y1 + y2) / 2)
 
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    cls_id = int(box.cls[0])
-                    conf = float(box.conf[0])
+                # ===============================
+                # NORMALISATION DU NOM
+                # ===============================
+                if "orange" in class_name.lower():
+                    label = "ORANGE"
+                    color = (0, 140, 255)  # orange en BGR
+                elif "blue" in class_name.lower():
+                    label = "BLUE"
+                    color = (255, 0, 0)
+                elif "yellow" in class_name.lower():
+                    label = "YELLOW"
+                    color = (0, 255, 255)
+                else:
+                    label = class_name.upper()
+                    color = (0, 255, 0)
 
-                    # -------- COULEUR & NOM --------
-                    name_display = self.CUSTOM_NAMES.get(
-                        cls_id,
-                        self.model.names[cls_id]
-                    )
+                display_text = f"{label} : {confidence:.2f}"
 
-                    label = f"{name_display} {conf:.2f}"
-                    color = self.COLORS.get(cls_id, (0, 255, 0))  # fallback vert
+                # ===============================
+                # DESSIN
+                # ===============================
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
-                    # -------- AFFICHAGE --------
-                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
+                # fond texte
+                (w, h), _ = cv2.getTextSize(display_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                cv2.rectangle(frame, (x1, y1 - h - 10), (x1 + w, y1), color, -1)
 
-                    t_size, _ = cv2.getTextSize(
-                        label,
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        1
-                    )
+                # texte blanc
+                cv2.putText(
+                    frame,
+                    display_text,
+                    (x1, y1 - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2
+                )
 
-                    cv2.rectangle(
-                        display_frame,
-                        (x1, y1 - 20),
-                        (x1 + t_size[0], y1),
-                        color,
-                        -1
-                    )
+                # ===============================
+                # PUBLICATION POSE
+                # ===============================
+                pose_msg = Pose2D()
 
-                    cv2.putText(
-                        display_frame,
-                        label,
-                        (x1, y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        (0, 0, 0),
-                        1
-                    )
+                if self.ros_distro == "iron":
+                    # Iron → Pose2D simple
+                    pose_msg.x = float(cx)
+                    pose_msg.y = float(cy)
+                    pose_msg.theta = 0.0
 
-                    # -------- BBOX ROS --------
-                    w = float(x2 - x1)
-                    h = float(y2 - y1)
-                    cx = float(x1 + w / 2.0)
-                    cy = float(y1 + h / 2.0)
+                elif self.ros_distro == "galactic":
+                    # Galactic → Pose2D aussi simple (mais bug fréquent si mal importé)
+                    pose_msg.x = float(cx)
+                    pose_msg.y = float(cy)
+                    pose_msg.theta = 0.0
 
-                    detection = Detection2D()
-                    detection.header = msg.header
-                    detection.bbox = BoundingBox2D()
+                else:
+                    # fallback
+                    pose_msg.x = float(cx)
+                    pose_msg.y = float(cy)
+                    pose_msg.theta = 0.0
 
-                    if self.ros_style == "IRON":
-                        detection.bbox.center.position.x = cx
-                        detection.bbox.center.position.y = cy
-                        detection.bbox.center.theta = 0.0
-                    else:
-                        detection.bbox.center.x = cx
-                        detection.bbox.center.y = cy
-                        detection.bbox.center.theta = 0.0
+                self.pose_publisher.publish(pose_msg)
 
-                    detection.bbox.size_x = w
-                    detection.bbox.size_y = h
-
-                    hypothesis = ObjectHypothesisWithPose()
-                    hypothesis.hypothesis.class_id = str(cls_id)
-                    hypothesis.hypothesis.score = conf
-
-                    detection.results.append(hypothesis)
-                    detections_msg.detections.append(detection)
-
-            self.publisher.publish(detections_msg)
-
-            cv2.imshow("YOLO FINAL", display_frame)
-            cv2.waitKey(1)
-
-        except Exception as e:
-            self.get_logger().error(f"Erreur Callback : {e}")
+        cv2.imshow("YOLO Detection", frame)
+        cv2.waitKey(1)
 
 
+# ===============================
+# MAIN
+# ===============================
 def main(args=None):
-
     rclpy.init(args=args)
     node = YoloPerceptionNode()
-
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        cv2.destroyAllWindows()
-        if rclpy.ok():
-            rclpy.shutdown()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':
