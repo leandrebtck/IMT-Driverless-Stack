@@ -1,26 +1,50 @@
 #!/bin/bash
 
 # ==========================================
-# LAUNCHER - FSDS + YOLO (TEST CAMÉRA)
+# LAUNCHER - FSDS + YOLO (TEST CAMÉRA SEULE)
 # ==========================================
 
-# --- 1. CONFIGURATION CHEMINS ---
+# --- 1. DÉTECTION AUTOMATIQUE DE ROS ---
+if [ -f "/opt/ros/iron/setup.bash" ]; then
+    MY_ROS_DISTRO="iron"
+elif [ -f "/opt/ros/galactic/setup.bash" ]; then
+    MY_ROS_DISTRO="galactic"
+elif [ -f "/opt/ros/humble/setup.bash" ]; then
+    MY_ROS_DISTRO="humble"
+else
+    echo "❌ ERREUR : Aucune installation ROS détectée dans /opt/ros/"
+    exit 1
+fi
+
+echo "✅ ROS Version détectée : $MY_ROS_DISTRO"
+ROS_SETUP="/opt/ros/$MY_ROS_DISTRO/setup.bash"
+
+# --- 2. CONFIGURATION CHEMINS ---
 SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
-# --- 2. GESTION DU WORKSPACE ROS ---
+# --- 3. GESTION DU WORKSPACE ROS ---
 if [ -d "$INTERNAL_WS/src" ]; then
-    echo "✅ Workspace interne détecté."
+    echo "✅ Workspace interne détecté : $INTERNAL_WS"
+    
+    # Compilation automatique si nécessaire
     if [ ! -f "$INTERNAL_WS/install/setup.bash" ]; then
         echo "⚠️  Compilation requise. Patientez..."
-        cd "$INTERNAL_WS" && colcon build --symlink-install || { echo "❌ ÉCHEC COMPILATION"; exit 1; }
+        # On source ROS avant de compiler
+        bash -c "source $ROS_SETUP && cd $INTERNAL_WS && colcon build --symlink-install" || { echo "❌ ÉCHEC COMPILATION"; exit 1; }
     fi
-    ROS_CMD="source /opt/ros/galactic/setup.bash; source $INTERNAL_WS/install/setup.bash"
-else
+    
+    # Commande à injecter dans les terminaux
+    ROS_CMD="source $ROS_SETUP; source $INTERNAL_WS/install/setup.bash"
+    
+elif [ -f "$HOME/Workspace_ROS2/install/setup.bash" ]; then
     echo "⚠️  Pas de workspace interne. Utilisation de ~/Workspace_ROS2..."
-    ROS_CMD="source /opt/ros/galactic/setup.bash; source ~/Workspace_ROS2/install/setup.bash"
+    ROS_CMD="source $ROS_SETUP; source $HOME/Workspace_ROS2/install/setup.bash"
+else
+    echo "⚠️  Aucun workspace trouvé. Seul ROS standard sera chargé."
+    ROS_CMD="source $ROS_SETUP"
 fi
 
 echo "🚀 LANCEMENT STACK IMT DRIVERLESS (YOLO SEUL)"
@@ -32,16 +56,23 @@ sleep 5
 
 # 2. ROS2 BRIDGE 
 echo "🔌 Lancement Bridge..."
-gnome-terminal --title="BRIDGE ROS2" -- bash -c "source /opt/ros/galactic/setup.bash; cd ~/Formula-Student-Driverless-Simulator/ros2; source install/setup.bash; ros2 launch fsds_ros2_bridge fsds_ros2_bridge.launch.py; exec bash" &
+# Le bridge a besoin de charger ROS avant ses propres dépendances
+gnome-terminal --title="BRIDGE ROS2" -- bash -c "source $ROS_SETUP; cd ~/Formula-Student-Driverless-Simulator/ros2; source install/setup.bash; ros2 launch fsds_ros2_bridge fsds_ros2_bridge.launch.py; exec bash" &
 sleep 3
 
 # 3. PERCEPTION (YOLO)
 echo "👁️ Lancement YOLO..."
-gnome-terminal --title="YOLO PERCEPTION" -- bash -c "$ROS_CMD; python3 $SCRIPT_DIR/yolo_ros.py; exec bash" &
+gnome-terminal --title="YOLO PERCEPTION" -- bash -c "
+    $ROS_CMD; 
+    python3 $SCRIPT_DIR/yolo_ros.py; 
+    exec bash" &
 sleep 2
 
 # 4. DRIVE (PILOTE)
 echo "🏎️ Lancement Drive..."
-gnome-terminal --title="GLOBAL DRIVE" -- bash -c "$ROS_CMD; python3 $SCRIPT_DIR/global_drive.py; exec bash" &
+gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
+    $ROS_CMD; 
+    python3 $SCRIPT_DIR/global_drive.py; 
+    exec bash" &
 
 echo "✅ Tout est lancé depuis : $SCRIPT_DIR"
