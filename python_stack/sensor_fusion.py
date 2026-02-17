@@ -11,6 +11,7 @@ from image_geometry import PinholeCameraModel
 import tf2_geometry_msgs
 from geometry_msgs.msg import PointStamped
 import numpy as np
+import copy # <--- INDISPENSABLE pour éviter les bugs de référence
 
 class SensorFusionNode(Node):
     def __init__(self):
@@ -20,20 +21,21 @@ class SensorFusionNode(Node):
         self.bridge = CvBridge()
         self.camera_model = PinholeCameraModel()
         
-        # --- CONFIGURATION (416x416) ---
+        # Configuration Caméra 
         self.force_camera_info()
         
         self.latest_image = None
+        self.latest_header = None 
         self.latest_detections = None
 
         self.create_subscription(Image, '/fsds/cam1/image_color', self.image_callback, qos_profile_sensor_data)
         self.create_subscription(MarkerArray, '/lidar/cone_markers', self.lidar_callback, qos_profile_sensor_data)
-        self.create_subscription(Detection2DArray, '/perception/detections', self.yolo_callback, qos_profile_sensor_data) # Attention au topic !
+        self.create_subscription(Detection2DArray, '/perception/detections', self.yolo_callback, qos_profile_sensor_data)
 
         self.publisher = self.create_publisher(MarkerArray, '/fusion/final_cones', 10)
         self.debug_pub = self.create_publisher(Image, '/fusion/debug_image', 10)
         
-        self.get_logger().info("🔍 FUSION lancée (Mode Robuste Iron/Galactic)...")
+        self.get_logger().info("🔍 FUSION V2 (Fix Gray + Time Sync)...")
 
     def force_camera_info(self):
         width = 416
@@ -41,7 +43,6 @@ class SensorFusionNode(Node):
         f = width / 2.0
         cx = width / 2.0
         cy = height / 2.0
-
         cam_info = CameraInfo()
         cam_info.width = width
         cam_info.height = height
@@ -52,49 +53,46 @@ class SensorFusionNode(Node):
     def image_callback(self, msg): 
         try:
             self.latest_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
-        except Exception:
-            pass
+            self.latest_header = msg.header
+        except Exception: pass
 
     def yolo_callback(self, msg): 
         self.latest_detections = msg
 
-    # --- FONCTION UTILITAIRE POUR LIRE LA BBOX (Le secret de la compatibilité) ---
     def get_bbox_center(self, det):
-        """Récupère cx, cy peu importe la version de ROS (Iron ou Galactic)"""
+        # Fonction robuste Iron/Galactic
         try:
-            # Cas Iron / Rolling / Humble récent
             return float(det.bbox.center.x), float(det.bbox.center.y)
         except AttributeError:
             try:
-                # Cas Galactic / Humble ancien / Foxy
                 return float(det.bbox.center.position.x), float(det.bbox.center.position.y)
             except AttributeError:
-                return 0.0, 0.0 # Échec total
+                return 0.0, 0.0
 
     def lidar_callback(self, markers_msg):
-        # TEST 1 : A-t-on une image ?
-        if self.latest_image is None: 
-            return
+        if self.latest_image is None: return
         
         try:
-            # TEST 2 : Le TF (Transformation 3D) fonctionne-t-il ?
-            transform = self.tf_buffer.lookup_transform('fsds/FSCar', 'fsds/Lidar1', rclpy.time.Time())
-        except Exception as e:
-            # On réduit le log pour ne pas spammer
-            self.get_logger().warning(f"TF non prêt: {e}", throttle_duration_sec=5)
+            # CORRECTION TEMPORELLE : On demande la transformation "la plus récente possible" (Time 0)
+            # rclpy.time.Time() donnait "maintenant", ce qui peut échouer si le TF a 1ms de retard
+            transform = self.tf_buffer.lookup_transform(
+                'fsds/FSCar', 
+                'fsds/Lidar1', 
+                rclpy.time.Time(seconds=0) # <--- LE FIX EST ICI
+            )
+        except Exception:
             return
 
         debug_img = self.latest_image.copy()
         final_markers = MarkerArray()
 
-        # DESSIN BOÎTES YOLO (DEBUG)
+        # Dessin des boîtes YOLO pour debug
         if self.latest_detections:
             for det in self.latest_detections.detections:
-                # UTILISATION DE LA FONCTION ROBUSTE
                 cx, cy = self.get_bbox_center(det)
                 w, h = float(det.bbox.size_x), float(det.bbox.size_y)
-                
-                if cx > 0: # Si lecture valide
+                if cx > 0:
+                    # Boîte Verte = YOLO a vu quelque chose
                     cv2.rectangle(debug_img, (int(cx-w/2), int(cy-h/2)), (int(cx+w/2), int(cy+h/2)), (0, 255, 0), 1)
 
         cones_processed = 0
@@ -107,6 +105,7 @@ class SensorFusionNode(Node):
             try:
                 p_car = tf2_geometry_msgs.do_transform_point(p_lidar, transform)
                 
+                # Mathématique de projection (Ajuste ces valeurs si tes points rouges sont décalés)
                 rel_x = p_car.point.x - (-0.3)
                 rel_y = p_car.point.y - (-0.16)
                 rel_z = p_car.point.z - (0.8)
@@ -119,9 +118,9 @@ class SensorFusionNode(Node):
                     u, v = self.camera_model.project3dToPixel((x_opt, y_opt, z_opt))
                     u, v = int(u), int(v)
 
-                    # Cercle Rouge (Projection Lidar sur Image)
+                    # Point Rouge = Où le Lidar pense que le cône est
                     if 0 <= u < 416 and 0 <= v < 416:
-                        cv2.circle(debug_img, (u, v), 4, (0, 0, 255), -1)
+                        cv2.circle(debug_img, (u, v), 5, (0, 0, 255), -1)
 
                     color_found = False
                     cls_id = -1
@@ -129,7 +128,6 @@ class SensorFusionNode(Node):
 
                     if self.latest_detections:
                         for det in self.latest_detections.detections:
-                            # UTILISATION DE LA FONCTION ROBUSTE ICI AUSSI
                             cx, cy = self.get_bbox_center(det)
                             w, h = float(det.bbox.size_x), float(det.bbox.size_y)
                             
@@ -139,15 +137,15 @@ class SensorFusionNode(Node):
                             box_y2 = (cy + h/2) + margin
 
                             if box_x1 <= u <= box_x2 and box_y1 <= v <= box_y2:
-                                # Récupération sécurisée de l'ID
                                 if len(det.results) > 0:
                                     cls_id = int(det.results[0].hypothesis.class_id)
                                     color_found = True
                                     break
                     
-                    new_marker = marker
-                    new_marker.ns = "fusion_cones" # Namespace propre
-                    new_marker.color.a = 1.0
+                    # CORRECTION : On utilise deepcopy pour casser le lien avec l'ancien marker
+                    new_marker = copy.deepcopy(marker)
+                    new_marker.ns = "fusion_cones"
+                    new_marker.color.a = 1.0 # Alpha à 100%
                     
                     if color_found:
                         if cls_id == 0: # Jaune
@@ -157,21 +155,24 @@ class SensorFusionNode(Node):
                         elif cls_id == 2: # Orange
                             new_marker.color.r, new_marker.color.g, new_marker.color.b = 1.0, 0.5, 0.0
                     else:
-                        # Blanc si non identifié (Lidar seul)
-                        new_marker.color.r, new_marker.color.g, new_marker.color.b = 1.0, 1.0, 1.0
+                        # NON RECONNU = MAGENTA (Pour bien voir que la fusion a échoué)
+                        # Si tu vois ça, c'est que le point rouge n'est pas dans la boîte verte
+                        new_marker.color.r, new_marker.color.g, new_marker.color.b = 1.0, 0.0, 1.0
                     
                     final_markers.markers.append(new_marker)
                     cones_processed += 1
 
-            except Exception as e:
+            except Exception:
                 continue
 
-        # PUBLICATION
         self.publisher.publish(final_markers)
+        
+        # Publication Image Debug
         try:
-            self.debug_pub.publish(self.bridge.cv2_to_imgmsg(debug_img, encoding='bgr8'))
-        except:
-            pass
+            debug_msg = self.bridge.cv2_to_imgmsg(debug_img, encoding='bgr8')
+            if self.latest_header: debug_msg.header = self.latest_header
+            self.debug_pub.publish(debug_msg)
+        except: pass
 
 def main(args=None):
     rclpy.init(args=args)
