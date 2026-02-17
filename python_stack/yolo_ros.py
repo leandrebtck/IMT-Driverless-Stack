@@ -16,50 +16,57 @@ class YoloPerceptionNode(Node):
 
         # --- CONFIGURATION ---
         script_dir = os.path.dirname(os.path.abspath(__file__))
+        # On construit le chemin vers le poids
         weights_path = os.path.join(script_dir, 'weights', 'best_FINAL.pt')
 
-        self.get_logger().info(f"📍 Dossier du script : {script_dir}")
-        
+        self.get_logger().info(f" Dossier du script : {script_dir}")
+        self.get_logger().info(f" Chemin calculé du .pt : {weights_path}")
+
         # Vérification 
         if not os.path.exists(weights_path):
-            self.get_logger().error(f" FICHIER INTROUVABLE ! Vérifier que le dossier 'weights' est bien dans {script_dir}")
+            self.get_logger().error(
+                f" FICHIER INTROUVABLE ! Vérifier que le dossier 'weights' est bien dans {script_dir}"
+            )
         else:
-            self.get_logger().info("✅ Poids trouvés ! Chargement...")
+            self.get_logger().info("✅ Fichier trouvé ! Chargement...")
 
         self.model_path = weights_path
         self.camera_topic = '/fsds/cam1/image_color'
 
-        # --- CORRECTION COULEURS (BGR) ---
-        # OpenCV utilise BGR (Blue, Green, Red)
-        # J'ai inversé : 0 est devenu Jaune, 1 est devenu Bleu
+        # --- COULEURS ET NOMS CORRIGÉS ---
+        # OpenCV utilise BGR.
+        # 0 = JAUNE (0, 255, 255)
+        # 1 = BLEU  (255, 0, 0)
         self.COLORS = {
-            0: (0, 255, 255), # JAUNE (B=0, G=255, R=255) -> Correction
-            1: (255, 0, 0),   # BLEU  (B=255, G=0, R=0)   -> Correction
-            2: (0, 0, 255),   # ROUGE (Orange)
+            0: (0, 255, 255),
+            1: (255, 0, 0),
+            2: (0, 0, 255),
         }
 
-        # Noms personnalisés (Optionnel, pour l'affichage texte)
         self.CUSTOM_NAMES = {
             0: "JAUNE",
             1: "BLEU",
             2: "ORANGE",
         }
 
+        self.get_logger().info(f"🔧 Chargement modèle : {self.model_path}")
         try:
             self.model = YOLO(self.model_path)
         except Exception as e:
             self.get_logger().error(f" Erreur modèle : {e}")
             raise e
 
-        # MODE INFÉRENCE
+        # 🔹 MODE INFÉRENCE
         self.model.eval()
+
+        # 🔹 CHOIX DU DEVICE
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model.to(device)
         self.get_logger().info(f"🚀 YOLO lancé sur : {device}")
 
         self.bridge = CvBridge()
 
-        # Subscriber Image
+        # QoS Robustesse
         self.subscription = self.create_subscription(
             Image,
             self.camera_topic,
@@ -74,7 +81,7 @@ class YoloPerceptionNode(Node):
             10
         )
 
-        self.get_logger().info("✅ Perception lancée avec Couleurs CORRIGÉES.")
+        self.get_logger().info("✅ Perception lancée (Style d'affichage 'Classique').")
 
     def listener_callback(self, msg):
         try:
@@ -86,7 +93,7 @@ class YoloPerceptionNode(Node):
             with torch.no_grad():
                 results = self.model(cv_image, verbose=False, conf=0.5)
 
-            # Préparation du message global
+            # Préparation du message global pour ROS
             detections_msg = Detection2DArray()
             detections_msg.header = msg.header 
     
@@ -96,18 +103,27 @@ class YoloPerceptionNode(Node):
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
 
-                # Affichage Visuel
-                name_display = self.CUSTOM_NAMES.get(cls_id, str(cls_id))
+                # --- PARTIE AFFICHAGE (Ton style préféré) ---
+                name_display = self.CUSTOM_NAMES.get(cls_id, self.model.names[cls_id])
                 label = f"{name_display} {conf:.2f}"
-                
-                # Récupération de la couleur corrigée
                 color = self.COLORS.get(cls_id, (255, 255, 255))
 
-                # Dessin sur l'image de debug
+                # Le rectangle autour du cône
                 cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(display_frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-                # --- PARTIE FUSION (ROS MESSAGE) ---
+                # Le fond rempli pour le texte (plus lisible)
+                t_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+                cv2.rectangle(
+                    display_frame, (x1, y1 - 20),
+                    (x1 + t_size[0], y1), color, -1
+                )
+                # Le texte en noir par dessus
+                cv2.putText(
+                    display_frame, label, (x1, y1 - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1
+                )
+
+                # --- PARTIE ROS (Pour la fusion) ---
                 w = float(x2 - x1)
                 h = float(y2 - y1)
                 cx = float(x1 + w / 2.0)
@@ -130,10 +146,10 @@ class YoloPerceptionNode(Node):
             # 4. Envoi ROS
             self.publisher.publish(detections_msg)
             
-            # 5. Affichage Fenêtre
-            # Mettre des # ci-dessous pour le mode HEADLESS (Performance)
-            #cv2.imshow("YOLO FINAL", display_frame)  # <-- ICI
-            #cv2.waitKey(1)                           # <-- ICI
+            # 5. Affichage Fenêtre             
+            # Mettre des # ci-dessous pour le mode HEADLESS (Performance)             
+            cv2.imshow("YOLO FINAL", display_frame)  # <-- ICI                 
+            cv2.waitKey(1)                           # <-- ICI
 
         except Exception as e:
             self.get_logger().error(f"❌ Erreur Display : {e}")
