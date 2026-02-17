@@ -162,6 +162,13 @@ sudo apt update
 sudo apt install ros-galactic-sensor-msgs-py
 python3 -m pip install pyqtgraph PyQt5
 python3 -m pip install scikit-learn
+
+# YOLO perception (détection de cônes)
+python3 -m pip install ultralytics
+
+# Global drive (contrôle clavier / automation)
+python3 -m pip install pynput
+
 ################################
 # 12) Fin
 ################################
