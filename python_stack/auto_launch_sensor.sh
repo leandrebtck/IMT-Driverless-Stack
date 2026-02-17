@@ -78,8 +78,8 @@ sleep 2
 echo "[5/7] Lancement FUSION..."
 gnome-terminal --title="SENSOR FUSION" -- bash -c "
     $ROS_CMD;
-    # Utilisation du nom correct (fusion_node.py)
-    python3 $SCRIPT_DIR/fusion_node.py; 
+    
+    python3 $SCRIPT_DIR/sensor_fusion.py; 
     exec bash" &
 sleep 1
 
