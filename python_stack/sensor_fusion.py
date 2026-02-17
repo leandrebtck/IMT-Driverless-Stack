@@ -11,7 +11,7 @@ from image_geometry import PinholeCameraModel
 import tf2_geometry_msgs
 from geometry_msgs.msg import PointStamped
 import numpy as np
-import copy # <--- INDISPENSABLE pour éviter les bugs de référence
+import copy 
 
 class SensorFusionNode(Node):
     def __init__(self):
@@ -21,7 +21,7 @@ class SensorFusionNode(Node):
         self.bridge = CvBridge()
         self.camera_model = PinholeCameraModel()
         
-        # Configuration Caméra 
+        # Configuration Caméra
         self.force_camera_info()
         
         self.latest_image = None
@@ -35,7 +35,7 @@ class SensorFusionNode(Node):
         self.publisher = self.create_publisher(MarkerArray, '/fusion/final_cones', 10)
         self.debug_pub = self.create_publisher(Image, '/fusion/debug_image', 10)
         
-        self.get_logger().info("🔍 FUSION V2 (Fix Gray + Time Sync)...")
+        self.get_logger().info("🔍 FUSION TF2 PURE (Zéro offset manuel)...")
 
     def force_camera_info(self):
         width = 416
@@ -60,7 +60,6 @@ class SensorFusionNode(Node):
         self.latest_detections = msg
 
     def get_bbox_center(self, det):
-        # Fonction robuste Iron/Galactic
         try:
             return float(det.bbox.center.x), float(det.bbox.center.y)
         except AttributeError:
@@ -73,26 +72,29 @@ class SensorFusionNode(Node):
         if self.latest_image is None: return
         
         try:
-            # CORRECTION TEMPORELLE : On demande la transformation "la plus récente possible" (Time 0)
-            # rclpy.time.Time() donnait "maintenant", ce qui peut échouer si le TF a 1ms de retard
+            # === CORRECTION MAJEURE ===
+            # On ne demande plus la transformation vers la VOITURE ('fsds/FSCar')
+            # Mais directement vers la CAMÉRA ('fsds/cam1')
+            # ROS s'occupe de tous les décalages (x, y, z) automatiquement.
             transform = self.tf_buffer.lookup_transform(
-                'fsds/FSCar', 
-                'fsds/Lidar1', 
-                rclpy.time.Time(seconds=0) # <--- LE FIX EST ICI
+                'fsds/cam1',       # CIBLE : La caméra
+                'fsds/Lidar1',     # SOURCE : Le Lidar
+                rclpy.time.Time(seconds=0)
             )
-        except Exception:
+        except Exception as e:
+            # On log moins souvent pour ne pas spammer si le TF n'est pas prêt
+            self.get_logger().warning(f"TF non prêt: {e}", throttle_duration_sec=2)
             return
 
         debug_img = self.latest_image.copy()
         final_markers = MarkerArray()
 
-        # Dessin des boîtes YOLO pour debug
+        # Dessin carrés verts (YOLO)
         if self.latest_detections:
             for det in self.latest_detections.detections:
                 cx, cy = self.get_bbox_center(det)
                 w, h = float(det.bbox.size_x), float(det.bbox.size_y)
                 if cx > 0:
-                    # Boîte Verte = YOLO a vu quelque chose
                     cv2.rectangle(debug_img, (int(cx-w/2), int(cy-h/2)), (int(cx+w/2), int(cy+h/2)), (0, 255, 0), 1)
 
         cones_processed = 0
@@ -103,22 +105,30 @@ class SensorFusionNode(Node):
             p_lidar.point = marker.pose.position
             
             try:
-                p_car = tf2_geometry_msgs.do_transform_point(p_lidar, transform)
+                # 1. TRANSFORMATION AUTOMATIQUE (Grâce au TF)
+                # p_cam contient maintenant le point VU DEPUIS LA CAMÉRA
+                # Mais attention : Dans le repère "Physique" de la caméra (X=Devant, Y=Gauche, Z=Haut)
+                p_cam = tf2_geometry_msgs.do_transform_point(p_lidar, transform)
                 
-                # Mathématique de projection (Ajuste ces valeurs si tes points rouges sont décalés)
-                rel_x = p_car.point.x - (-0.3)
-                rel_y = p_car.point.y - (-0.16)
-                rel_z = p_car.point.z - (0.8)
+                # 2. PASSAGE EN REPÈRE OPTIQUE (Nécessaire pour project3dToPixel)
+                # Une caméra "Optique" voit : Z=Profondeur, X=Droite, Y=Bas
+                # On fait juste la rotation des axes standard, SANS ajouter de décalage manuel (genre -0.3)
+                
+                x_phys = p_cam.point.x
+                y_phys = p_cam.point.y
+                z_phys = p_cam.point.z
 
-                z_opt = rel_x
-                x_opt = -rel_y
-                y_opt = -rel_z
+                # Conversion Standard ROS Body -> Optical
+                z_opt = x_phys      # La profondeur (Z) c'est ce qui est devant (X)
+                x_opt = -y_phys     # La droite (X) c'est l'inverse de la gauche (Y)
+                y_opt = -z_phys     # Le bas (Y) c'est l'inverse du haut (Z)
 
+                # Si le point est devant la caméra (Z > 0.1m)
                 if z_opt > 0.1:
                     u, v = self.camera_model.project3dToPixel((x_opt, y_opt, z_opt))
                     u, v = int(u), int(v)
 
-                    # Point Rouge = Où le Lidar pense que le cône est
+                    # Dessin Point Rouge
                     if 0 <= u < 416 and 0 <= v < 416:
                         cv2.circle(debug_img, (u, v), 5, (0, 0, 255), -1)
 
@@ -131,21 +141,17 @@ class SensorFusionNode(Node):
                             cx, cy = self.get_bbox_center(det)
                             w, h = float(det.bbox.size_x), float(det.bbox.size_y)
                             
-                            box_x1 = (cx - w/2) - margin
-                            box_x2 = (cx + w/2) + margin
-                            box_y1 = (cy - h/2) - margin
-                            box_y2 = (cy + h/2) + margin
-
-                            if box_x1 <= u <= box_x2 and box_y1 <= v <= box_y2:
+                            # Test d'inclusion
+                            if (cx - w/2 - margin) <= u <= (cx + w/2 + margin) and \
+                               (cy - h/2 - margin) <= v <= (cy + h/2 + margin):
                                 if len(det.results) > 0:
                                     cls_id = int(det.results[0].hypothesis.class_id)
                                     color_found = True
                                     break
                     
-                    # CORRECTION : On utilise deepcopy pour casser le lien avec l'ancien marker
                     new_marker = copy.deepcopy(marker)
                     new_marker.ns = "fusion_cones"
-                    new_marker.color.a = 1.0 # Alpha à 100%
+                    new_marker.color.a = 1.0
                     
                     if color_found:
                         if cls_id == 0: # Jaune
@@ -155,8 +161,7 @@ class SensorFusionNode(Node):
                         elif cls_id == 2: # Orange
                             new_marker.color.r, new_marker.color.g, new_marker.color.b = 1.0, 0.5, 0.0
                     else:
-                        # NON RECONNU = MAGENTA (Pour bien voir que la fusion a échoué)
-                        # Si tu vois ça, c'est que le point rouge n'est pas dans la boîte verte
+                        # Magenta pour les erreurs de fusion
                         new_marker.color.r, new_marker.color.g, new_marker.color.b = 1.0, 0.0, 1.0
                     
                     final_markers.markers.append(new_marker)
@@ -167,7 +172,6 @@ class SensorFusionNode(Node):
 
         self.publisher.publish(final_markers)
         
-        # Publication Image Debug
         try:
             debug_msg = self.bridge.cv2_to_imgmsg(debug_img, encoding='bgr8')
             if self.latest_header: debug_msg.header = self.latest_header
