@@ -27,7 +27,6 @@ add_to_bashrc_if_missing() {
 echo "[1] Vérification simulateur FSDS..."
 
 SIM_DIR="$HOME/Formula-Student-Driverless-Simulator-binary"
-
 mkdir -p "$SIM_DIR"
 cd "$SIM_DIR"
 
@@ -45,7 +44,6 @@ fi
 ############################################
 
 echo "[2] Vérification CMake..."
-
 if ! command_exists cmake; then
     sudo snap install cmake --classic
     add_to_bashrc_if_missing 'export PATH=/snap/bin:$PATH'
@@ -54,15 +52,28 @@ else
 fi
 
 ############################################
-# 3) ROS2 GALACTIC
+# 3) ROS2 AUTO-DETECTION
 ############################################
 
-echo "[3] Vérification ROS2 Galactic..."
+echo "[3] Détection ROS2..."
 
-ROS_DISTRO_FOUND="galactic"
+ROS_DISTRO_FOUND=""
 
-if [ ! -d "/opt/ros/$ROS_DISTRO_FOUND" ]; then
-    echo "➡ ROS2 Galactic non trouvé, installation..."
+# Vérifie si ROS_DISTRO est déjà défini
+if [ -n "$ROS_DISTRO" ]; then
+    ROS_DISTRO_FOUND="$ROS_DISTRO"
+fi
+
+# Sinon regarde dans /opt/ros
+if [ -z "$ROS_DISTRO_FOUND" ] && [ -d "/opt/ros" ]; then
+    ROS_DISTRO_FOUND=$(ls /opt/ros | grep -E "iron|galactic" | head -n 1)
+fi
+
+# Cas : aucune version trouvée → installer Galactic
+if [ -z "$ROS_DISTRO_FOUND" ]; then
+    ROS_DISTRO_FOUND="galactic"
+    echo "➡ Aucune version de ROS trouvée. Installation ROS Galactic..."
+
     sudo apt update
     sudo apt install -y curl gnupg2 lsb-release
 
@@ -76,10 +87,10 @@ http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
     sudo apt update
     sudo apt install -y ros-galactic-desktop
 else
-    echo "✅ ROS2 Galactic déjà présent."
+    echo "✅ ROS2 détecté : $ROS_DISTRO_FOUND"
 fi
 
-# Source automatique Galactic pour ce projet
+# Source automatique
 source /opt/ros/$ROS_DISTRO_FOUND/setup.bash
 add_to_bashrc_if_missing "source /opt/ros/$ROS_DISTRO_FOUND/setup.bash"
 
@@ -89,16 +100,25 @@ add_to_bashrc_if_missing "source /opt/ros/$ROS_DISTRO_FOUND/setup.bash"
 
 echo "[4] Installation dépendances ROS2 pour $ROS_DISTRO_FOUND..."
 
-sudo apt install -y \
-    python3-colcon-common-extensions \
-    libyaml-cpp-dev \
-    libcurl4-openssl-dev \
-    ros-$ROS_DISTRO_FOUND-cv-bridge \
-    ros-$ROS_DISTRO_FOUND-image-transport \
-    ros-$ROS_DISTRO_FOUND-tf2-geometry-msgs \
-    ros-$ROS_DISTRO_FOUND-joy \
-    ros-$ROS_DISTRO_FOUND-sensor-msgs-py \
-    ros-$ROS_DISTRO_FOUND-vision-msgs
+sudo apt install -y python3-colcon-common-extensions libyaml-cpp-dev libcurl4-openssl-dev
+
+if [ "$ROS_DISTRO_FOUND" = "galactic" ]; then
+    sudo apt install -y \
+        ros-galactic-cv-bridge \
+        ros-galactic-image-transport \
+        ros-galactic-tf2-geometry-msgs \
+        ros-galactic-joy \
+        ros-galactic-sensor-msgs-py \
+        ros-galactic-vision-msgs
+elif [ "$ROS_DISTRO_FOUND" = "iron" ]; then
+    sudo apt install -y \
+        ros-iron-cv-bridge \
+        ros-iron-image-transport \
+        ros-iron-tf2-geometry-msgs \
+        ros-iron-joy \
+        ros-iron-sensor-msgs-py \
+        ros-iron-vision-msgs
+fi
 
 ############################################
 # 5) CLONE OU UPDATE FSDS
@@ -162,14 +182,7 @@ echo "[8] Installation dépendances Python..."
 sudo apt install -y python3-pip python3-venv
 python3 -m pip install --upgrade pip
 
-# YOLO perception (détection de cônes)
-python3 -m pip install ultralytics
-
-# Global drive (contrôle clavier / automation)
-python3 -m pip install pynput
-
-# Autres dépendances
-python3 -m pip install opencv-python pyqtgraph PyQt5 scikit-learn
+python3 -m pip install ultralytics pynput opencv-python pyqtgraph PyQt5 scikit-learn
 
 PY_REQUIREMENTS="$FSDS_DIR/python/requirements.txt"
 if [ -f "$PY_REQUIREMENTS" ]; then
@@ -181,7 +194,6 @@ fi
 ############################################
 
 echo "[9] Outils gestion fenêtres..."
-
 sudo apt install -y xdotool wmctrl
 
 ############################################
