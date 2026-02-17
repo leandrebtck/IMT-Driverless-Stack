@@ -54,27 +54,15 @@ else
 fi
 
 ############################################
-# 3) ROS2 AUTO-DETECTION
+# 3) ROS2 GALACTIC
 ############################################
 
-echo "[3] Détection ROS2..."
+echo "[3] Vérification ROS2 Galactic..."
 
-ROS_DISTRO_FOUND=""
+ROS_DISTRO_FOUND="galactic"
 
-# Si déjà sourcé
-if [ -n "$ROS_DISTRO" ]; then
-    ROS_DISTRO_FOUND="$ROS_DISTRO"
-fi
-
-# Sinon on regarde /opt/ros
-if [ -z "$ROS_DISTRO_FOUND" ] && [ -d "/opt/ros" ]; then
-    ROS_DISTRO_FOUND=$(ls /opt/ros | head -n 1)
-fi
-
-# Si rien trouvé → installer Galactic par défaut
-if [ -z "$ROS_DISTRO_FOUND" ]; then
-    echo "➡ Aucune distro ROS2 détectée. Installation Galactic..."
-
+if [ ! -d "/opt/ros/$ROS_DISTRO_FOUND" ]; then
+    echo "➡ ROS2 Galactic non trouvé, installation..."
     sudo apt update
     sudo apt install -y curl gnupg2 lsb-release
 
@@ -87,13 +75,11 @@ http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
 
     sudo apt update
     sudo apt install -y ros-galactic-desktop
-
-    ROS_DISTRO_FOUND="galactic"
 else
-    echo "✅ ROS2 détecté : $ROS_DISTRO_FOUND"
+    echo "✅ ROS2 Galactic déjà présent."
 fi
 
-# Source automatique
+# Source automatique Galactic pour ce projet
 source /opt/ros/$ROS_DISTRO_FOUND/setup.bash
 add_to_bashrc_if_missing "source /opt/ros/$ROS_DISTRO_FOUND/setup.bash"
 
@@ -102,8 +88,6 @@ add_to_bashrc_if_missing "source /opt/ros/$ROS_DISTRO_FOUND/setup.bash"
 ############################################
 
 echo "[4] Installation dépendances ROS2 pour $ROS_DISTRO_FOUND..."
-
-sudo apt update
 
 sudo apt install -y \
     python3-colcon-common-extensions \
