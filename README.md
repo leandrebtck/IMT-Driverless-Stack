@@ -25,7 +25,7 @@ Depuis un terminal, lancez :
 sudo apt update && sudo apt install -y curl
 bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/SETUP_IMT_V1.sh)
 ```
-# Pour mettre à jour et vérifier l'installation
+### Pour mettre à jour et vérifier l'installation
 ```bash
 sudo apt update && sudo apt install -y curl
 bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/setup_update.sh)
