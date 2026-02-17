@@ -1,19 +1,29 @@
 #!/bin/bash
 
 # ==========================================
-# LAUNCHER - IMT DRIVERLESS
-# Lance : Simu + Bridge + LiDAR + YOLO + FUSION + RVIZ + DRIVE
+# LAUNCHER - FULL STACK (FUSION + RVIZ)
 # ==========================================
 
-# --- CONFIGURATION ---
+# --- 1. CONFIGURATION CHEMINS ---
 SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
-# Raccourci pour sourcer ROS2 + Workspace 
-ROS_CMD="source /opt/ros/galactic/setup.bash; source ~/Workspace_ROS2/install/setup.bash"
+# --- 2. GESTION DU WORKSPACE ROS ---
+if [ -d "$INTERNAL_WS/src" ]; then
+    echo "✅ Workspace interne détecté."
+    if [ ! -f "$INTERNAL_WS/install/setup.bash" ]; then
+        echo "⚠️  Compilation requise. Patientez..."
+        cd "$INTERNAL_WS" && colcon build --symlink-install || { echo "❌ ÉCHEC COMPILATION"; exit 1; }
+    fi
+    ROS_CMD="source /opt/ros/galactic/setup.bash; source $INTERNAL_WS/install/setup.bash"
+else
+    echo "⚠️  Pas de workspace interne. Utilisation de ~/Workspace_ROS2..."
+    ROS_CMD="source /opt/ros/galactic/setup.bash; source ~/Workspace_ROS2/install/setup.bash"
+fi
 
-echo "Dossier des scripts : $SCRIPT_DIR"
-echo "DÉMARRAGE DE LA STACK COMPLÈTE..."
+echo "🚀 DÉMARRAGE DE LA STACK COMPLÈTE..."
 
 # 1. SIMULATEUR FSDS
 echo "[1/7] Lancement Simu..."
