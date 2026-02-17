@@ -132,28 +132,11 @@ FSDS_DIR="$HOME/Formula-Student-Driverless-Simulator"
 
 if [ ! -d "$FSDS_DIR" ]; then
     git clone https://github.com/FS-Driverless/Formula-Student-Driverless-Simulator.git --recurse-submodules
-    cd "$FSDS_DIR"
-    git checkout tags/v2.2.0
-else
-    echo "✅ Repo déjà présent."
-
-    cd "$FSDS_DIR"
-
-    # Vérifie si on est sur une branche
-    CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD)
-
-    if [ -z "$CURRENT_BRANCH" ]; then
-        echo "➡ Repo en detached HEAD (probablement sur un tag)."
-        echo "➡ Pas de git pull pour éviter erreur."
-        git fetch --all
-        git submodule update --init --recursive
-    else
-        echo "➡ Mise à jour branche $CURRENT_BRANCH"
-        git pull
-        git submodule update --init --recursive
-    fi
 fi
 
+cd "$FSDS_DIR"
+git checkout tags/v2.2.0
+git submodule update --init --recursive || true
 
 ############################################
 # 6) AIRLIB
