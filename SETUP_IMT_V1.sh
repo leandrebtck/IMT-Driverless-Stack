@@ -169,6 +169,9 @@ python3 -m pip install ultralytics
 # Global drive (contrôle clavier / automation)
 python3 -m pip install pynput
 
+sudo apt update
+sudo apt install ros-galactic-vision-msgs
+
 ################################
 # 12) Fin
 ################################
