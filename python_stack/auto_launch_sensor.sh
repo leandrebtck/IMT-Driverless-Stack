@@ -4,23 +4,42 @@
 # LAUNCHER - FULL STACK (FUSION + RVIZ)
 # ==========================================
 
-# --- 1. CONFIGURATION CHEMINS ---
+# --- 1. DÉTECTION AUTOMATIQUE DE ROS ---
+if [ -f "/opt/ros/iron/setup.bash" ]; then
+    MY_ROS_DISTRO="iron"
+elif [ -f "/opt/ros/galactic/setup.bash" ]; then
+    MY_ROS_DISTRO="galactic"
+elif [ -f "/opt/ros/humble/setup.bash" ]; then
+    MY_ROS_DISTRO="humble"
+else
+    echo "❌ ERREUR : Aucune installation ROS détectée dans /opt/ros/"
+    exit 1
+fi
+
+echo "✅ ROS Version détectée : $MY_ROS_DISTRO"
+ROS_SETUP="/opt/ros/$MY_ROS_DISTRO/setup.bash"
+
+# --- 2. CONFIGURATION CHEMINS ---
 SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
-# --- 2. GESTION DU WORKSPACE ROS ---
+# --- 3. GESTION DU WORKSPACE ROS ---
 if [ -d "$INTERNAL_WS/src" ]; then
     echo "✅ Workspace interne détecté."
     if [ ! -f "$INTERNAL_WS/install/setup.bash" ]; then
         echo "⚠️  Compilation requise. Patientez..."
-        cd "$INTERNAL_WS" && colcon build --symlink-install || { echo "❌ ÉCHEC COMPILATION"; exit 1; }
+        # On source ROS avant de compiler pour éviter l'erreur
+        bash -c "source $ROS_SETUP && cd $INTERNAL_WS && colcon build --symlink-install" || { echo "❌ ÉCHEC COMPILATION"; exit 1; }
     fi
-    ROS_CMD="source /opt/ros/galactic/setup.bash; source $INTERNAL_WS/install/setup.bash"
-else
+    ROS_CMD="source $ROS_SETUP; source $INTERNAL_WS/install/setup.bash"
+elif [ -f "$HOME/Workspace_ROS2/install/setup.bash" ]; then
     echo "⚠️  Pas de workspace interne. Utilisation de ~/Workspace_ROS2..."
-    ROS_CMD="source /opt/ros/galactic/setup.bash; source ~/Workspace_ROS2/install/setup.bash"
+    ROS_CMD="source $ROS_SETUP; source $HOME/Workspace_ROS2/install/setup.bash"
+else
+    echo "⚠️  Aucun workspace trouvé. Seul ROS standard sera chargé."
+    ROS_CMD="source $ROS_SETUP"
 fi
 
 echo "🚀 DÉMARRAGE DE LA STACK COMPLÈTE..."
@@ -32,7 +51,7 @@ sleep 5
 
 # 2. ROS2 BRIDGE
 echo "[2/7] Lancement Bridge..."
-gnome-terminal --title="ROS2 BRIDGE" -- bash -c "source /opt/ros/galactic/setup.bash; cd ~/Formula-Student-Driverless-Simulator/ros2; source install/setup.bash; ros2 launch fsds_ros2_bridge fsds_ros2_bridge.launch.py; exec bash" &
+gnome-terminal --title="ROS2 BRIDGE" -- bash -c "source $ROS_SETUP; cd ~/Formula-Student-Driverless-Simulator/ros2; source install/setup.bash; ros2 launch fsds_ros2_bridge fsds_ros2_bridge.launch.py; exec bash" &
 sleep 4
 
 # 3. LIDAR STACK
@@ -59,7 +78,8 @@ sleep 2
 echo "[5/7] Lancement FUSION..."
 gnome-terminal --title="SENSOR FUSION" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/sensor_fusion.py; 
+    # Utilisation du nom correct (fusion_node.py)
+    python3 $SCRIPT_DIR/fusion_node.py; 
     exec bash" &
 sleep 1
 
@@ -67,7 +87,12 @@ sleep 1
 echo "[6/7] Lancement RVIZ..."
 gnome-terminal --title="RVIZ VISUALIZATION" -- bash -c "
     $ROS_CMD;
-    rviz2; 
+    # Si un fichier de config existe, on l'utilise
+    if [ -f ~/IMT-Driverless-Stack/default.rviz ]; then
+        rviz2 -d ~/IMT-Driverless-Stack/default.rviz;
+    else
+        rviz2;
+    fi
     exec bash" &
 sleep 1
 
