@@ -49,12 +49,12 @@ bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stac
 ## Lancer automatiquement FSDS + ROS2 + YOLO (uniquement)
 
 ```bash
-bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; ~/IMT-Driverless-Stack/python_stack/auto_launch.sh"
+bash -c "[ -d ~/IMT-Driverless-Stack ] || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch.sh"
 ```
 ## Lancer automatiquement FDSD + ROS2 + CAMERA(YOLO) + LIDAR (1 commande)
 
 ```bash
-bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh"
+bash -c "[ -d ~/IMT-Driverless-Stack ] || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh"
 ```
 Pour plus de visibilité :
 
@@ -70,7 +70,7 @@ Puis :
 ## Lancer automatiquement tout + sensor fusion + rviz : 
 
 ```bash
-bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh"
+bash -c "[ -d ~/IMT-Driverless-Stack ] || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh"
 ```
 à noter qu'à partir de environ 4/5 m/s , la fusion devient très peu précise
 De plus, il est nécessaire de passer yolo_ros en mode headless pour + de performance
