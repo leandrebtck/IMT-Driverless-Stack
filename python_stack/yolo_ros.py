@@ -18,28 +18,30 @@ class YoloPerceptionNode(Node):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         weights_path = os.path.join(script_dir, 'weights', 'best_FINAL.pt')
 
-        self.get_logger().info(f" Dossier du script : {script_dir}")
+        self.get_logger().info(f"📍 Dossier du script : {script_dir}")
         
         # Vérification 
         if not os.path.exists(weights_path):
             self.get_logger().error(f" FICHIER INTROUVABLE ! Vérifier que le dossier 'weights' est bien dans {script_dir}")
         else:
-            self.get_logger().info(" Poids trouvés ! Chargement...")
+            self.get_logger().info("✅ Poids trouvés ! Chargement...")
 
         self.model_path = weights_path
         self.camera_topic = '/fsds/cam1/image_color'
 
-        # Couleurs (BGR) pour l'affichage
+        # --- CORRECTION COULEURS (BGR) ---
+        # OpenCV utilise BGR (Blue, Green, Red)
+        # J'ai inversé : 0 est devenu Jaune, 1 est devenu Bleu
         self.COLORS = {
-            0: (255, 0, 0),   # Bleu
-            1: (0, 255, 255), # Jaune
-            2: (0, 0, 255),   # Rouge (Orange)
+            0: (0, 255, 255), # JAUNE (B=0, G=255, R=255) -> Correction
+            1: (255, 0, 0),   # BLEU  (B=255, G=0, R=0)   -> Correction
+            2: (0, 0, 255),   # ROUGE (Orange)
         }
 
-        # Noms personnalisés
+        # Noms personnalisés (Optionnel, pour l'affichage texte)
         self.CUSTOM_NAMES = {
-            0: "BLEU",
-            1: "JAUNE",
+            0: "JAUNE",
+            1: "BLEU",
             2: "ORANGE",
         }
 
@@ -72,7 +74,7 @@ class YoloPerceptionNode(Node):
             10
         )
 
-        self.get_logger().info("✅ Perception lancée avec affichage.")
+        self.get_logger().info("✅ Perception lancée avec Couleurs CORRIGÉES.")
 
     def listener_callback(self, msg):
         try:
@@ -94,9 +96,11 @@ class YoloPerceptionNode(Node):
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
 
-                # Affichage Visuel (Optionnel pour la fusion, vital pour le debug)
+                # Affichage Visuel
                 name_display = self.CUSTOM_NAMES.get(cls_id, str(cls_id))
                 label = f"{name_display} {conf:.2f}"
+                
+                # Récupération de la couleur corrigée
                 color = self.COLORS.get(cls_id, (255, 255, 255))
 
                 # Dessin sur l'image de debug
@@ -127,16 +131,12 @@ class YoloPerceptionNode(Node):
             self.publisher.publish(detections_msg)
             
             # 5. Affichage Fenêtre
-            # ====================================================
-            #  CONFIGURATION HEADLESS
-            # Enlèver les '#' ci-dessous pour voir la fenêtre (déconseillé si vous voulez lancer sensor)
-            # Laissez les '#' pour la performance (ex : sensor fusion) 
-            cv2.imshow("YOLO FINAL", display_frame)
-            cv2.waitKey(1)
-            # ====================================================
+            # Mettre des # ci-dessous pour le mode HEADLESS (Performance)
+            cv2.imshow("YOLO FINAL", display_frame)  <-- # ICI
+            cv2.waitKey(1)                           <-- # ICI
 
         except Exception as e:
-            self.get_logger().error(f" Erreur Display : {e}")
+            self.get_logger().error(f"❌ Erreur Display : {e}")
 
 def main(args=None):
     rclpy.init(args=args)
