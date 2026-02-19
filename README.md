@@ -10,7 +10,7 @@ Ce script bash configure **automatiquement** un environnement complet sur Ubuntu
 
 ---
 
-## Objectif  
+## Objectif: 
 
 Faciliter la mise en place d’un environnement complet FSDS + ROS2 pour n’importe quel utilisateur, sans configuration manuelle fastidieuse.  
 L’utilisateur peut lancer le simulateur + le ROS bridge en quelques commandes seulement.  
