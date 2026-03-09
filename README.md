@@ -66,7 +66,7 @@ bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull
 ```
 meme commande en local:
 ```bash
-cd ~/IMT-Driverless-Stack && chmod +x python_stack/stereo.sh && ./python_stack/auto_stereo.sh
+cd ~/IMT-Driverless-Stack && chmod +x python_stack/auto_stereo.sh && ./python_stack/auto_stereo.sh
 ```
 
 ## Lancer automatiquement FDSD + ROS2 + CAMERA(YOLO) + LIDAR (1 commande)
