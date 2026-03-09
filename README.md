@@ -59,6 +59,15 @@ meme commande en local:
 ```bash
 cd ~/IMT-Driverless-Stack && chmod +x python_stack/auto_launch.sh && ./python_stack/auto_launch.sh
 ```
+## Lancer automatiquement Stereo
+
+```bash
+bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_stereo.sh; ~/IMT-Driverless-Stack/python_stack/auto_stereo.sh"
+```
+meme commande en local:
+```bash
+cd ~/IMT-Driverless-Stack && chmod +x python_stack/stereo.sh && ./python_stack/auto_stereo.sh
+```
 
 ## Lancer automatiquement FDSD + ROS2 + CAMERA(YOLO) + LIDAR (1 commande)
 
