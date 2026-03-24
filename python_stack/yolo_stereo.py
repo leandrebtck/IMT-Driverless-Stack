@@ -489,6 +489,23 @@ class YoloStereoNode(Node):
                 else:
                     hyp.hypothesis.score = 0.0
 
+                # Stocke la position 3D dans le repère physique fsds/cam1
+                # (X=avant, Y=gauche, Z=haut) — convention identique à sensor_fusion.py
+                # Repère optique : z_opt=profondeur, x_opt=droite, y_opt=bas
+                # Conversion optique → physique :
+                #   x_phys =  z_opt   (profondeur → avant)
+                #   y_phys = -x_opt   (gauche = -droite)
+                #   z_phys = -y_opt   (haut = -bas)
+                if z_obj is not None and z_obj > 0:
+                    img_h, img_w = img_left.shape[:2]
+                    fx    = self.focal_length
+                    x_opt = (cone_l['cx'] - img_w / 2.0) * z_obj / fx
+                    y_opt = (cone_l['cy'] - img_h / 2.0) * z_obj / fx
+                    z_opt = z_obj
+                    hyp.pose.pose.position.x =  z_opt   # avant
+                    hyp.pose.pose.position.y = -x_opt   # gauche
+                    hyp.pose.pose.position.z = -y_opt   # haut
+
                 detection.results.append(hyp)
                 detections_msg.detections.append(detection)
 
