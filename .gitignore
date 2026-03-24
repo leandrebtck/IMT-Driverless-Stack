@@ -1,0 +1,79 @@
+# ============================================================
+# ROS2 / Colcon build artifacts
+# ============================================================
+ros_workspace/build/
+ros_workspace/install/
+ros_workspace/log/
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# mypy / pyright cache
+.mypy_cache/
+.pyright/
+
+# ============================================================
+# ML / Deep Learning
+# ============================================================
+# Uncomment the line below if you do NOT want to track model weights
+# *.pt
+# *.pth
+# *.onnx
+# *.tflite
+
+# Training runs & experiment artifacts
+runs/
+*.log
+wandb/
+
+# ============================================================
+# IDE & editors
+# ============================================================
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ============================================================
+# OS generated files
+# ============================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ============================================================
+# Misc
+# ============================================================
+*.bag
+*.bag.active
+*.db
+*.sqlite
