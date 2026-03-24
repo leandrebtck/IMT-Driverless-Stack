@@ -88,8 +88,8 @@ echo "[6/7] Lancement RVIZ..."
 gnome-terminal --title="RVIZ VISUALIZATION" -- bash -c "
     $ROS_CMD;
     # Si un fichier de config existe, on l'utilise
-    if [ -f ~/IMT-Driverless-Stack/default.rviz ]; then
-        rviz2 -d ~/IMT-Driverless-Stack/default.rviz;
+    if [ -f "$PROJECT_ROOT/default.rviz" ]; then
+        rviz2 -d "$PROJECT_ROOT/default.rviz";
     else
         rviz2;
     fi

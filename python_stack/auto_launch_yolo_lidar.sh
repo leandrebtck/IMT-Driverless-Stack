@@ -91,7 +91,7 @@ gnome-terminal --title="PERCEPTION FUSION" -- bash -c "
     
     echo '---- 2. Fusion Lidar-Camera ----';
     # On lance la fusion maintenant que YOLO et LiDAR tournent
-    python3 $SCRIPT_DIR/fusion_node.py &
+    python3 $SCRIPT_DIR/sensor_fusion.py &
     
     wait" &
 sleep 2
