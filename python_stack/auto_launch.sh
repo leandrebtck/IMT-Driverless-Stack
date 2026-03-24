@@ -52,7 +52,15 @@ echo "🚀 LANCEMENT STACK IMT DRIVERLESS (YOLO SEUL)"
 # 1. SIMULATEUR
 echo "🎮 Lancement Simu..."
 gnome-terminal --title="SIMULATEUR" -- bash -c "cd $SIM_PATH; ./FSDS.sh -windowed -ResX=640 -ResY=480; exec bash" &
-sleep 5
+sleep 10
+
+if command -v zenity &>/dev/null; then
+    zenity --info --title="IMT Driverless" \
+        --text="Clique sur 'Run Simulation' dans le simulateur FSDS,\npuis clique sur OK pour continuer." \
+        --ok-label="Simulation lancee — Continuer" --width=400 2>/dev/null || true
+else
+    read -p ">>> Clique sur 'Run Simulation' dans FSDS, puis appuie sur Entree..."
+fi
 
 # 2. ROS2 BRIDGE 
 echo "🔌 Lancement Bridge..."
@@ -75,4 +83,5 @@ gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
     python3 $SCRIPT_DIR/global_drive.py; 
     exec bash" &
 
+sleep 2
 echo "✅ Tout est lancé depuis : $SCRIPT_DIR"

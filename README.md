@@ -30,70 +30,73 @@ bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stac
 sudo apt update && sudo apt install -y curl
 bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/setup_update.sh)
 ```
-# Lancement automatique : auto_launch_FSDS.sh
+## Launcher graphique (recommandé)
 
-Ce dépôt inclut un exécutable permettant de tout lancer automatiquement :
+Lance l’interface graphique qui liste tous les scripts disponibles et permet de les exécuter en un clic :
 
-- Lancer FSDS en 1280×720
-- Attendre son ouverture
-- Cliquer sur Run Simulation
-- Lancer le ROS2 bridge
-- Lancer un terminal ROS2 prêt à l’emploi et lister les topics disponibles
-
-## Lancer automatiquement FSDS + ROS2 (en 1 seule commande)
-
-Sans télécharger manuellement le script, lancez :
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/leandrebtck/IMT-Driverless-Stack/main/auto_launch_FSDS.sh)
+python3 ~/IMT-Driverless-Stack/launcher.py
 ```
-meme commande en local (après telechargement des scripts):
+
+---
+
+## Scripts de lancement
+
+### `auto_launch_FSDS.sh` — Simulateur seul
+Lance FSDS, attend son ouverture, clique automatiquement sur *Run Simulation*, puis ouvre le ROS2 bridge.
 ```bash
 cd ~/IMT-Driverless-Stack && bash auto_launch_FSDS.sh
 ```
-## Lancer automatiquement FSDS + ROS2 + YOLO (uniquement)
 
+### `auto_launch.sh` — FSDS + YOLO (caméra seule)
 ```bash
-bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch.sh"
-```
-meme commande en local:
-```bash
-cd ~/IMT-Driverless-Stack && chmod +x python_stack/auto_launch.sh && ./python_stack/auto_launch.sh
-```
-## Lancer automatiquement Stereo
-
-```bash
-bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_stereo.sh; ~/IMT-Driverless-Stack/python_stack/auto_stereo.sh"
-```
-meme commande en local:
-```bash
-cd ~/IMT-Driverless-Stack && chmod +x python_stack/auto_stereo.sh && ./python_stack/auto_stereo.sh
+cd ~/IMT-Driverless-Stack && bash python_stack/auto_launch.sh
 ```
 
-## Lancer automatiquement FDSD + ROS2 + CAMERA(YOLO) + LIDAR (1 commande)
+### `auto_stereo.sh` — FSDS + YOLO stéréo + profondeur
+```bash
+cd ~/IMT-Driverless-Stack && bash python_stack/auto_stereo.sh
+```
 
+### `auto_yolo_lidar.sh` — FSDS + YOLO + LiDAR *(recommandé)*
+Détection des cônes (couleur + distance mesurée par LiDAR). Publie :
+- `/yolo_lidar/debug_image` — image annotée (bbox + couleur + distance)
+- `/yolo_lidar/cone_markers` — markers 3D colorés pour RViz
 ```bash
-bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_yolo_lidar.sh"
+cd ~/IMT-Driverless-Stack && bash python_stack/auto_yolo_lidar.sh
 ```
-Pour plus de visibilité :
 
+### `auto_launch_yolo_lidar.sh` — FSDS + YOLO + LiDAR + Fusion + RViz
 ```bash
-source /opt/ros/galactic/setup.bash
-rviz2
+cd ~/IMT-Driverless-Stack && bash python_stack/auto_launch_yolo_lidar.sh
 ```
-Puis : 
- -Fixed Frame (en haut a gauche), cliquez dessus et selectionnez à droite fsds/Lidar1
- -Add (en bas à gauche) ---> By topic ---> lidar -> cone_markers -> MarkerArray -> OK
- -Puis appuyez sur la flèche à côté de MarkerArray et vérifiez bien que le topic est : /lidar/cone_markers
- 
-## Lancer automatiquement tout + sensor fusion + rviz : 
+Pour visualiser dans RViz : *Fixed Frame* → `fsds/Lidar1`, puis *Add → By topic → /lidar/cone_markers → MarkerArray*
 
+### `auto_launch_sensor.sh` — Stack complète + sensor fusion + RViz
 ```bash
-bash -c "[ -d ~/IMT-Driverless-Stack ] && (cd ~/IMT-Driverless-Stack && git pull) || git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git ~/IMT-Driverless-Stack; chmod +x ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh; ~/IMT-Driverless-Stack/python_stack/auto_launch_sensor.sh"
+cd ~/IMT-Driverless-Stack && bash python_stack/auto_launch_sensor.sh
 ```
-en local:
-```bash
-cd ~/IMT-Driverless-Stack && chmod +x python_stack/auto_launch_sensor.sh && ./python_stack/auto_launch_sensor.sh
-```
-à noter qu'à partir de environ 4/5 m/s , la fusion devient très peu précise
-De plus, il est nécessaire de passer yolo_ros en mode headless pour + de performance
- 
+> Note : la fusion devient imprécise au-delà de ~4-5 m/s.
+
+---
+
+## Contrôle clavier
+
+Tous les scripts lancent `global_drive.py` (terminal **GLOBAL DRIVE**) :
+
+| Touche | Action  |
+|--------|---------|
+| `Z`    | Avancer |
+| `S`    | Reculer |
+| `Q`    | Gauche  |
+| `D`    | Droite  |
+
+---
+
+## Compatibilité
+
+| OS            | ROS          |
+|---------------|--------------|
+| Ubuntu 20.04  | ROS Galactic |
+| Ubuntu 22.04+ | ROS Iron     |
+
