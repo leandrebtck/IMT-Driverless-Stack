@@ -1,0 +1,78 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grille
+      Color: 80; 80; 80
+      Plane Cell Count: 30
+      Cell Size: 1
+      Reference Frame: <Fixed Frame>
+      Value: true
+
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Marker Scale: 0.5
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Value: true
+
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Carte des cones LiDAR (permanente)
+      Topic:
+        Value: /slam_lidar/cone_map
+        Depth: 1
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+      Value: true
+
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Trajectoire voiture
+      Topic:
+        Value: /slam/car_path
+        Depth: 10
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Color: 255; 80; 80
+      Line Style: Lines
+      Line Width: 0.08
+      Value: true
+
+  Enabled: true
+  Fixed Frame: fsds/map
+  Global Options:
+    Background Color: 25; 25; 35
+    Fixed Frame: fsds/map
+    Frame Rate: 30
+
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive: false
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Vue de dessus
+      Scale: 12
+      X: 0
+      Y: 0
+      Value: TopDownOrtho (rviz_default_plugins)
+    Saved: ~
+
+Window Geometry:
+  Height: 900
+  Width: 1280
+  X: 0
+  Y: 0
