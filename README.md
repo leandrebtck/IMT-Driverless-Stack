@@ -100,3 +100,11 @@ Tous les scripts lancent `global_drive.py` (terminal **GLOBAL DRIVE**) :
 | Ubuntu 20.04  | ROS Galactic |
 | Ubuntu 22.04+ | ROS Iron     |
 
+## Git pull
+```bash
+git clone https://github.com/leandrebtck/IMT-Driverless-Stack.git && cd IMT-Driverless-Stack
+```
+Si déjà cloné : 
+```bash
+cd ~/IMT-Driverless-Stack && git pull origin main
+```
