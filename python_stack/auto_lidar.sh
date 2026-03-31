@@ -103,7 +103,15 @@ gnome-terminal --title="LIDAR PIPELINE" -- bash -c "
     wait" &
 sleep 3
 
-# E. RVIZ
+#E. GLOBAL DRIVE
+echo "Lancement Global Drive..."
+gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
+    $ROS_CMD;
+    python3 $SCRIPT_DIR/global_drive.py; 
+    exec bash" &
+sleep 3
+
+# F. RVIZ
 echo "Lancement RViz..."
 gnome-terminal --title="RVIZ" -- bash -c "
     $ROS_CMD;
