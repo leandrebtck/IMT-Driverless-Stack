@@ -156,21 +156,39 @@ fi
 
 echo "✅ Python Client FSDS installé avec succès !"
 ################################
-# 11) pour cone fusion
+# 11) Dépendances Python complètes
 ################################
 sudo apt update
-sudo apt install ros-galactic-sensor-msgs-py
-python3 -m pip install pyqtgraph PyQt5
-python3 -m pip install scikit-learn
 
-# YOLO perception (détection de cônes)
-python3 -m pip install ultralytics
+# ── Paquets ROS2 ──────────────────────────────────────────────────────────────
+sudo apt install -y \
+    ros-galactic-sensor-msgs-py \
+    ros-galactic-vision-msgs \
+    ros-galactic-image-geometry \
+    ros-galactic-message-filters \
+    ros-galactic-tf2-ros \
+    ros-galactic-nav-msgs \
+    ros-galactic-visualization-msgs
 
-# Global drive (contrôle clavier / automation)
-python3 -m pip install pynput
+# ── Bibliothèques Python ───────────────────────────────────────────────────────
+echo "➡ Installation libs Python..."
+python3 -m pip install "numpy<2.0" \
+    ultralytics \
+    opencv-python \
+    pynput \
+    pyqtgraph \
+    PyQt5 \
+    scikit-learn \
+    torch \
+    torchvision
 
-sudo apt update
-sudo apt install ros-galactic-vision-msgs
+# ── Monitoring système (system_monitor.py) ────────────────────────────────────
+echo "➡ Installation libs monitoring..."
+python3 -m pip install psutil
+python3 -m pip install pynvml || echo "⚠ pynvml optionnel (GPU NVIDIA uniquement)"
+
+# ── Outils fenêtre / dialogue ──────────────────────────────────────────────────
+sudo apt install -y xdotool wmctrl zenity
 
 ################################
 # 12) Fin

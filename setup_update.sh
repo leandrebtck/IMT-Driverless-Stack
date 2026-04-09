@@ -159,9 +159,22 @@ echo "[8] Installation dépendances Python..."
 sudo apt install -y python3-pip python3-venv
 python3 -m pip install --upgrade pip
 
-# ⚠️ LA CORRECTION EST ICI : on ajoute "numpy<2.0"
-echo "➡ Installation des libs Python (avec correctif NumPy)..."
-python3 -m pip install ultralytics pynput opencv-python pyqtgraph PyQt5 scikit-learn "numpy<2.0"
+# ── Bibliothèques de base ─────────────────────────────────────────────────────
+echo "➡ Installation libs Python (avec correctif NumPy)..."
+python3 -m pip install "numpy<2.0" \
+    ultralytics \
+    opencv-python \
+    pynput \
+    pyqtgraph \
+    PyQt5 \
+    scikit-learn \
+    torch \
+    torchvision
+
+# ── Monitoring système (system_monitor.py) ────────────────────────────────────
+echo "➡ Installation libs monitoring..."
+python3 -m pip install psutil       # CPU, RAM, processus
+python3 -m pip install pynvml || echo "⚠ pynvml optionnel (GPU NVIDIA uniquement)"
 
 # Requirements du simulateur
 PY_REQUIREMENTS="$FSDS_DIR/python/requirements.txt"
@@ -170,10 +183,21 @@ if [ -f "$PY_REQUIREMENTS" ]; then
 fi
 
 ############################################
+# 8b) PAQUETS ROS2 SUPPLÉMENTAIRES
+############################################
+echo "[8b] Paquets ROS2 perception..."
+sudo apt install -y \
+    ros-$TARGET_ROS-image-geometry \
+    ros-$TARGET_ROS-message-filters \
+    ros-$TARGET_ROS-tf2-ros \
+    ros-$TARGET_ROS-nav-msgs \
+    ros-$TARGET_ROS-visualization-msgs
+
+############################################
 # 9) OUTILS SYSTEME
 ############################################
-echo "[9] Outils fenêtre..."
-sudo apt install -y xdotool wmctrl
+echo "[9] Outils fenêtre / dialogue..."
+sudo apt install -y xdotool wmctrl zenity
 
 echo ""
 echo "========================================="
