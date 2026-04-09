@@ -1,8 +1,14 @@
 <p align="center">
-  <img src="docs/assets/logo_imtensity_nobg.png" alt="IMTensity Logo" width="400"/>
+  <img src="docs/assets/logo_imtensity_nobg.png" alt="IMTensity Logo" width="600"/>
 </p>
 
-# SETUP_IMT_V1
+# Documentation complète
+
+📖 **[https://leandrebtck.github.io/IMT-Driverless-Stack/](https://leandrebtck.github.io/IMT-Driverless-Stack/)**
+
+Architecture, topics ROS2, paramètres, guide de déploiement sur véhicule réel.
+
+## SETUP_IMT_V1
 Installateur automatique pour Formula Student Driverless Simulator + ROS 2 Galactic + ROS-Bridge / dépendances requises  
 
 Ce script bash configure **automatiquement** un environnement complet sur Ubuntu 20.04 :  
@@ -103,12 +109,6 @@ Tous les scripts lancent `global_drive.py` (terminal **GLOBAL DRIVE**) :
 |---------------|--------------|
 | Ubuntu 20.04  | ROS Galactic |
 | Ubuntu 22.04+ | ROS Iron     |
-
-## Documentation complète
-
-📖 **[https://leandrebtck.github.io/IMT-Driverless-Stack/](https://leandrebtck.github.io/IMT-Driverless-Stack/)**
-
-Architecture, topics ROS2, paramètres, guide de déploiement sur véhicule réel.
 
 ---
 
