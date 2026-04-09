@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo_imtensity.png" alt="IMTensity Logo" width="220"/>
+  <img src="docs/assets/logo_imtensity_nobg.png" alt="IMTensity Logo" width="400"/>
 </p>
 
 # SETUP_IMT_V1
