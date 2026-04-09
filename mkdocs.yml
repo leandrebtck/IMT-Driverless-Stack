@@ -8,8 +8,8 @@ copyright: "IMT Driverless Team"
 theme:
   name: material
   language: fr
-  logo: assets/logo.png
-  favicon: assets/logo.png
+  logo: assets/logo_imtensity.png
+  favicon: assets/logo_imtensity.png
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
