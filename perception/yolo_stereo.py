@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -9,56 +14,26 @@ import cv2
 import numpy as np
 import message_filters
 from ultralytics import YOLO
-import os
 import torch
 import threading
 
 from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose
 
-# Hauteur reelle d'un cone FSG selon le reglement technique Formula Student
-FSG_CONE_REAL_HEIGHT_M = 0.325
+# ── Paramètres chargés depuis config.yaml ────────────────────────────────────
+_cam = CFG['camera']
+FSG_CONE_REAL_HEIGHT_M = _cam['cone_real_height_m']
+BASELINE_M             = _cam['baseline_m']
+FOCAL_PX               = _cam['focal_px']
+DEPTH_MAX_AGE_S        = _cam['depth_max_age_s']
+CY_TOLERANCE_PX        = _cam['epipolar_tolerance_px']
+DISP_MIN_BBOX_PX       = _cam['disparity_min_px']
+DISP_MAX_BBOX_PX       = _cam['disparity_max_px']
+Z_STEREO_MIN_M         = _cam['stereo_min_depth_m']
+Z_STEREO_MAX_M         = _cam['stereo_max_depth_m']
+DEPTH_OFFSET           = {int(k): v for k, v in _cam['depth_offset_by_class'].items()}
 
-# Ecartement entre cam1 (Y=-0.32) et cam2 (Y=+0.32) defini dans settings.json
-BASELINE_M = 0.64
-
-# Focale par defaut en pixels avant reception du topic camera_info
-# Calcul : f = W / (2 * tan(FOV/2)) = 416 / (2 * tan(45deg)) = 208px
-FOCAL_PX = 208.0
-
-# Age maximum acceptable d'une image depth par rapport a la frame courante
-DEPTH_MAX_AGE_S = 0.5
-
-# -----------------------------------------------------------------------
-# Parametres du matching stéréo par bounding box
-# -----------------------------------------------------------------------
-
-# Tolerance verticale pour la contrainte epipolaire.
-# Les deux cameras etant horizontalement alignees, les cones doivent
-# apparaitre a la meme hauteur (cy) dans les deux images.
-# Une tolerance de 15px absorbe les petites imprecisions de bbox YOLO.
-CY_TOLERANCE_PX = 15
-
-# Disparite minimum acceptee pour le matching.
-# d_min = 8px => Z_max = f*B/d = 208*0.64/8 = 16.6m
-# En dessous de 8px, l'ecart entre deux centres de bbox est dans le bruit
-# de localisation YOLO et ne permet pas une mesure fiable.
-DISP_MIN_BBOX_PX = 8
-
-# Disparite maximum acceptee pour le matching.
-# d_max = 100px => Z_min = 208*0.64/100 = 1.33m
-# Au-dela, les cones sont tres proches et leurs bboxes tres larges ;
-# le matching reste possible mais la profondeur est moins critique.
-DISP_MAX_BBOX_PX = 100
-
-# Intervalle de profondeur dans lequel le matching bbox est considere fiable.
-# En dehors de cet intervalle, on bascule sur la methode monoculaire.
-Z_STEREO_MIN_M = 2.0
-Z_STEREO_MAX_M = 12.0
-
-# Correction empirique de biais systematique observe en simulation par couleur.
-# Bleu  (key_id=1) : surestimation moyenne de +2.0m
-# Jaune (key_id=0) : surestimation moyenne de +1.5m
-DEPTH_OFFSET = {0: -1.5, 1: -2.0, 2: 0.0}
+_topics = CFG['topics']
+_frames = CFG['frames']
 
 
 class YoloStereoNode(Node):
@@ -119,16 +94,16 @@ class YoloStereoNode(Node):
         self.CUSTOM_NAMES = {0: "JAUNE", 1: "BLEU", 2: "ORANGE"}
 
         self.sub_cam_info = self.create_subscription(
-            CameraInfo, '/fsds/cam1/camera_info', self.camera_info_cb, 10
+            CameraInfo, _topics['camera_info_left'], self.camera_info_cb, 10
         )
 
         # Synchronisation temporelle stricte entre cam1 et cam2 (tolerance 50ms)
         self.sub_left = message_filters.Subscriber(
-            self, Image, '/fsds/cam1/image_color',
+            self, Image, _topics['camera_left'],
             qos_profile=qos_profile_sensor_data
         )
         self.sub_right = message_filters.Subscriber(
-            self, Image, '/fsds/cam2/image_color',
+            self, Image, _topics['camera_right'],
             qos_profile=qos_profile_sensor_data
         )
         self.ts = message_filters.ApproximateTimeSynchronizer(
@@ -137,7 +112,7 @@ class YoloStereoNode(Node):
         self.ts.registerCallback(self.sync_callback)
 
         self.publisher = self.create_publisher(
-            Detection2DArray, '/perception/stereo_detections', 10
+            Detection2DArray, _topics['stereo_detections'], 10
         )
 
         self.get_logger().info("Perception Stereo BBox lancee.")

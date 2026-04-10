@@ -1,0 +1,245 @@
+# =============================================================================
+# config.yaml — Paramètres centralisés de la stack IMT Driverless
+# =============================================================================
+# Ce fichier est la source unique de vérité pour tous les paramètres
+# susceptibles de changer lors du passage du simulateur au véhicule réel.
+#
+# Chargé automatiquement par tous les scripts Python au démarrage.
+# Pour adapter la stack à un nouveau véhicule : modifier UNIQUEMENT ce fichier.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# TOPICS ROS2
+# Changer ces valeurs pour brancher les vrais capteurs à la place du simulateur
+# -----------------------------------------------------------------------------
+topics:
+  # Caméras
+  camera_left:       "/fsds/cam1/image_color"      # véhicule réel : "/camera/left/image_raw"
+  camera_right:      "/fsds/cam2/image_color"      # véhicule réel : "/camera/right/image_raw"
+  camera_info_left:  "/fsds/cam1/camera_info"      # véhicule réel : "/camera/left/camera_info"
+  camera_info_right: "/fsds/cam2/camera_info"      # véhicule réel : "/camera/right/camera_info"
+
+  # LiDAR
+  lidar:             "/lidar/Lidar1"               # véhicule réel : "/velodyne_points" ou "/ouster/points"
+  lidar_filtered:    "/lidar/obstacles"            # sortie du filtre sol (lidar_ros.py)
+
+  # Odométrie / localisation
+  odometry:          "/testing_only/odom"          # véhicule réel : "/odom"
+
+  # Ground truth (simulation uniquement — n'existe pas sur véhicule réel)
+  ground_truth_track: "/testing_only/track"
+
+  # Sorties perception
+  stereo_detections:  "/perception/stereo_detections"
+  lidar_detections:   "/perception/lidar_detections"
+
+  # Sorties SLAM stéréo
+  slam_stereo_map:    "/slam/cone_map"
+  slam_stereo_stats:  "/slam/stats"
+  car_path:           "/slam/car_path"
+
+  # Sorties SLAM LiDAR
+  slam_lidar_map:     "/slam_lidar/cone_map"
+  slam_lidar_stats:   "/slam_lidar/stats"
+
+  # Évaluation
+  eval_stats:         "/evaluation/stats"
+  eval_markers:       "/evaluation/markers"
+
+  # Debug / visualisation
+  debug_image_yolo_lidar:  "/yolo_lidar/debug_image"
+  debug_markers_yolo_lidar: "/yolo_lidar/cone_markers"
+  lidar_cone_markers:       "/lidar/cone_markers"
+
+  # Contrôle
+  control_command: "/control_command"
+
+
+# -----------------------------------------------------------------------------
+# REPÈRES TF (coordinate frames)
+# Changer si les frames de tes capteurs réels ont des noms différents
+# -----------------------------------------------------------------------------
+frames:
+  map:       "fsds/map"       # repère monde fixe (créé par odom_tf_publisher.py)
+  vehicle:   "fsds/FSCar"     # repère voiture (dynamique)
+  cam_left:  "fsds/cam1"      # caméra gauche
+  cam_right: "fsds/cam2"      # caméra droite
+  lidar:     "fsds/Lidar1"    # LiDAR
+
+
+# -----------------------------------------------------------------------------
+# PARAMÈTRES CAMÉRA STÉRÉO
+# À recalibrer pour chaque paire de caméras réelles
+# -----------------------------------------------------------------------------
+camera:
+  # Baseline : distance en mètres entre les deux caméras (axe Y)
+  # FSDS : cam1 à Y=-0.32m, cam2 à Y=+0.32m → baseline = 0.64m
+  # Mesurer physiquement sur le véhicule réel
+  baseline_m: 0.64
+
+  # Focale par défaut en pixels (remplacée automatiquement par /camera_info si disponible)
+  # Calcul : f = W / (2 * tan(FOV/2)) — pour FOV=90° et W=416px : f=208px
+  focal_px: 208.0
+
+  # Hauteur réelle d'un cône Formula Student Germany (règlement officiel)
+  cone_real_height_m: 0.325
+
+  # Plage de profondeur stéréo fiable (en dehors → fallback monoculaire)
+  stereo_min_depth_m: 2.0
+  stereo_max_depth_m: 12.0
+
+  # Tolérance contrainte épipolaire (les deux caméras sont horizontalement alignées)
+  epipolar_tolerance_px: 15
+
+  # Plage de disparité valide entre les deux bounding boxes
+  disparity_min_px: 8    # → Z_max ≈ 16.6m
+  disparity_max_px: 100  # → Z_min ≈ 1.3m
+
+  # Correction empirique de biais de profondeur par classe (simulateur FSDS uniquement)
+  # Remettre à 0.0 sur véhicule réel, puis recalibrer
+  depth_offset_by_class:
+    "0": -1.5   # JAUNE
+    "1": -2.0   # BLEU
+    "2":  0.0   # ORANGE
+
+  # Âge maximum d'une image de profondeur (secondes)
+  depth_max_age_s: 0.5
+
+
+# -----------------------------------------------------------------------------
+# PARAMÈTRES LIDAR
+# -----------------------------------------------------------------------------
+lidar:
+  # Filtre sol : points en dessous de ce seuil Z sont supprimés (lidar_ros.py)
+  # FSDS : sol ≈ -0.55m → seuil conservateur à -0.40m
+  # Véhicule réel : mesurer la hauteur du LiDAR par rapport au sol
+  z_ground_threshold_m: -0.40
+
+  # Marge autour de la bounding box YOLO pour l'association LiDAR (pixels fixes)
+  bbox_margin_px: 10
+
+  # Marge adaptative autour de la bbox (fraction de la plus petite dimension)
+  bbox_margin_ratio: 0.20
+
+  # Nombre minimum de points LiDAR dans une bbox pour estimer une position
+  min_points_in_bbox: 3
+
+  # Seuil rejet outliers : points à ± cette valeur de la médiane sont rejetés (m)
+  outlier_std_m: 0.50
+
+
+# -----------------------------------------------------------------------------
+# PARAMÈTRES CLUSTERING DBSCAN (lidar_cluster.py — pipeline LiDAR sans YOLO)
+# -----------------------------------------------------------------------------
+dbscan:
+  # Rayon de regroupement — diamètre cône FSG ≈ 0.28m + marge
+  eps_m: 0.5
+
+  # Nombre minimum de points pour former un cluster valide
+  # 2 = détecte les cônes éloignés ou partiellement visibles (peu de points LiDAR)
+  min_samples: 2
+
+  # Distance horizontale max acceptée pour un cône (m)
+  max_cone_distance_m: 15.0
+
+  # Hauteur max d'un cluster pour être un cône (m)
+  # Cône FSG = 0.325m + marge pour imprécisions LiDAR
+  max_cluster_height_m: 0.6
+
+
+# -----------------------------------------------------------------------------
+# PARAMÈTRES FILTRE DE KALMAN (yolo_lidar.py)
+# -----------------------------------------------------------------------------
+kalman:
+  # Bruit de mesure LiDAR (écart-type en mètres)
+  # LiDAR typique : précision ~10-20cm → 0.20m
+  measurement_noise_std_m: 0.20
+
+  # Bruit de processus (très faible car cône statique)
+  process_noise_std_m: 0.02
+
+
+# -----------------------------------------------------------------------------
+# PARAMÈTRES TRACKING (yolo_lidar.py)
+# -----------------------------------------------------------------------------
+tracking:
+  # Nombre de détections min avant de publier un cône (évite les faux positifs)
+  # 2 = confirme plus vite (réduit le délai d'apparition des cônes dans la carte)
+  min_hits: 2
+
+  # Nombre de frames sans détection avant de supprimer un tracker
+  max_misses: 8
+
+  # Distance 3D max (m) pour associer une mesure à un tracker existant
+  association_distance_m: 1.5
+
+
+# -----------------------------------------------------------------------------
+# PARAMÈTRES SLAM (cone_mapper_lidar.py et cone_mapper.py)
+# -----------------------------------------------------------------------------
+slam:
+  # Fenêtre de lissage de la moyenne pondérée (nombre de mesures max)
+  count_cap: 20
+
+  # Nombre min de détections pour afficher un cône sur la carte.
+  # 1 = affiche dès la première détection (réactivité max, quelques faux positifs).
+  # Augmenter si trop de cônes fantômes.
+  min_count: 1
+
+  # Fréquence de publication de la carte (Hz)
+  publish_hz: 10.0
+
+  # Taux de lacet (rad/s) au-dessus duquel on bloque l'ajout de NOUVEAUX cônes
+  # (stéréo seulement — LiDAR fiable même en virage).
+  # 0.3 = trop sensible (bloque presque tout le circuit). 0.6 = seuils raisonnables.
+  turn_yaw_rate_threshold: 0.6
+
+  lidar:
+    # Distance max pour fusionner deux détections LiDAR du même cône.
+    # LiDAR précis (±10 cm) → 1.2 m suffit.
+    merge_distance_m: 1.2
+    max_depth_straight_m: 12.0   # LiDAR fiable jusqu'à 12 m
+    max_depth_turn_m: 8.0
+
+  stereo:
+    # Distance max pour fusionner deux détections stéréo du même cône.
+    # Erreur de profondeur stéréo ≈ ±1-2 m → merge_dist plus grand.
+    merge_distance_m: 2.5
+    max_depth_straight_m: 8.0    # était 4.0 — trop court, cône vu à peine 2 s
+    max_depth_turn_m: 6.0
+
+  # Lignes de piste Catmull-Rom
+  line_stride_lidar: 1    # tous les cônes (LiDAR précis)
+  line_stride_stereo: 2   # 1 sur 2 (lissage modéré)
+
+  # Gap max (m) entre deux cônes consécutifs d'une même ligne
+  max_line_step_m: 8.0
+
+
+# -----------------------------------------------------------------------------
+# PARAMÈTRES ÉVALUATION (cone_evaluator.py)
+# -----------------------------------------------------------------------------
+evaluation:
+  # Distance max (m) pour apparier un cône détecté à un cône GT (ground truth)
+  # Au-delà → le cône est considéré comme un "fantôme"
+  match_threshold_m: 3.0
+
+  # Erreur de référence pour le calcul du pourcentage de précision
+  # 0% = erreur >= max_error_m, 100% = erreur = 0
+  max_error_reference_m: 1.5
+
+
+# -----------------------------------------------------------------------------
+# MODÈLE YOLO
+# -----------------------------------------------------------------------------
+yolo:
+  # Chemin relatif au dossier perception/ vers les poids du modèle
+  weights_file: "weights/best_FINAL.pt"
+
+  # Classes détectées
+  # 0 = JAUNE (cônes droite), 1 = BLEU (cônes gauche), 2 = ORANGE (départ/arrivée)
+  classes:
+    0: "JAUNE"
+    1: "BLEU"
+    2: "ORANGE"

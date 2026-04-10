@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================
-# LAUNCHER - FSDS + YOLO STEREO + DEPTH
+# LAUNCHER - FSDS + YOLO Stéréo + SLAM/Carte
 # ==========================================
 
 # --- 1. DETECTION AUTOMATIQUE DE ROS ---
@@ -22,28 +22,15 @@ SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 BRIDGE_PATH="$HOME/Formula-Student-Driverless-Simulator/ros2"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PERCEPTION_DIR="$PROJECT_ROOT/perception"
+TOOLS_DIR="$PROJECT_ROOT/tools"
+RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 WS_PATH="$PROJECT_ROOT/ros_workspace"
+RVIZ_CONFIG="$RVIZ_DIR/slam.rviz"
 
 ROS_CMD="source $ROS_SETUP; source $WS_PATH/install/setup.bash"
 
-# --- 3. COPIE ET VERIFICATION DU SETTINGS.JSON ---
-AIRSIM_SETTINGS="$HOME/Documents/AirSim/settings.json"
-LOCAL_SETTINGS="$SCRIPT_DIR/settings.json"
-
-mkdir -p "$HOME/Documents/AirSim"
-
-if [ -f "$LOCAL_SETTINGS" ]; then
-    echo "Copie du settings.json vers ~/Documents/AirSim/..."
-    cp "$LOCAL_SETTINGS" "$AIRSIM_SETTINGS"
-fi
-
-if grep -q "cam_depth" "$AIRSIM_SETTINGS" 2>/dev/null; then
-    echo "cam_depth present dans settings.json."
-else
-    echo "ATTENTION : cam_depth absent du settings.json charge."
-fi
-
-# --- 4. LANCEMENT ---
+# --- 3. SIMULATEUR ---
 echo "Lancement du simulateur..."
 gnome-terminal --title="SIMULATEUR" -- bash -c "
     cd $SIM_PATH;
@@ -54,13 +41,14 @@ echo "Attente demarrage simulateur (10s)..."
 sleep 10
 
 if command -v zenity &>/dev/null; then
-    zenity --info --title="IMT Driverless" \
+    zenity --info --title="IMT Driverless — SLAM Stereo" \
         --text="Clique sur 'Run Simulation' dans le simulateur FSDS,\npuis clique sur OK pour continuer." \
         --ok-label="Simulation lancee — Continuer" --width=400 2>/dev/null || true
 else
     read -p ">>> Clique sur 'Run Simulation' dans FSDS, puis appuie sur Entree..."
 fi
 
+# --- 4. BRIDGE ROS2 ---
 echo "Lancement Bridge ROS2..."
 gnome-terminal --title="BRIDGE ROS2" -- bash -c "
     source $ROS_SETUP;
@@ -68,30 +56,51 @@ gnome-terminal --title="BRIDGE ROS2" -- bash -c "
     source install/setup.bash;
     ros2 launch fsds_ros2_bridge fsds_ros2_bridge.launch.py;
     exec bash" &
-
-echo "Attente bridge (5s)..."
 sleep 5
 
-# Verification automatique de la cam_depth
-PUB_COUNT=$(ros2 topic info /fsds/cam_depth/image_depth 2>/dev/null | grep "Publisher count" | awk '{print $3}')
-if [ "$PUB_COUNT" = "1" ]; then
-    echo "cam_depth OK - Publisher actif."
-else
-    echo "ATTENTION : /fsds/cam_depth/image_depth n'a pas de publisher. Fallback stereo/mono actif."
-fi
-
-echo "Lancement YOLO..."
-gnome-terminal --title="YOLO PERCEPTION" -- bash -c "
+# --- 5. ODOM TF PUBLISHER (crée le frame fsds/map dans le TF) ---
+echo "Lancement Odom TF Publisher..."
+gnome-terminal --title="ODOM TF" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/yolo_stereo.py;
+    python3 $PERCEPTION_DIR/odom_tf_publisher.py;
     exec bash" &
 sleep 2
 
+# --- 6. YOLO STEREO ---
+echo "Lancement YOLO Stereo..."
+gnome-terminal --title="YOLO STEREO" -- bash -c "
+    $ROS_CMD;
+    python3 $PERCEPTION_DIR/yolo_stereo.py;
+    exec bash" &
+sleep 3
+
+# --- 7. CONE MAPPER (SLAM) ---
+echo "Lancement Cone Mapper..."
+gnome-terminal --title="CONE MAPPER" -- bash -c "
+    $ROS_CMD;
+    python3 $PERCEPTION_DIR/cone_mapper.py;
+    exec bash" &
+sleep 2
+
+# --- 8. RVIZ ---
+echo "Lancement RViz SLAM..."
+gnome-terminal --title="RVIZ SLAM" -- bash -c "
+    $ROS_CMD;
+    if [ -f \"$RVIZ_CONFIG\" ]; then
+        rviz2 -d \"$RVIZ_CONFIG\";
+    else
+        rviz2;
+    fi;
+    exec bash" &
+sleep 2
+
+# --- 9. DRIVE ---
 echo "Lancement Drive..."
 gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/global_drive.py;
+    python3 $TOOLS_DIR/global_drive.py;
     exec bash" &
 
 sleep 2
-echo "Tout est lance depuis : $SCRIPT_DIR"
+echo "SLAM Stereo stack lancee depuis : $SCRIPT_DIR"
+echo "Topics : /slam/cone_map | /slam/car_path | /slam/stats"

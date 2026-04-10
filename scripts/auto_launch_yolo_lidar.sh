@@ -23,6 +23,9 @@ ROS_SETUP="/opt/ros/$MY_ROS_DISTRO/setup.bash"
 SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PERCEPTION_DIR="$PROJECT_ROOT/perception"
+TOOLS_DIR="$PROJECT_ROOT/tools"
+RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
 # --- 3. GESTION DU WORKSPACE (Sourcer le bon fichier) ---
@@ -79,10 +82,10 @@ echo "🟢 Lancement LiDAR..."
 gnome-terminal --title="LIDAR PROCESSING" -- bash -c "
     $ROS_CMD;
     echo '---- 1. Filtre Sol ----';
-    python3 $SCRIPT_DIR/lidar_ros.py & 
+    python3 $PERCEPTION_DIR/lidar_ros.py & 
     sleep 1;
     echo '---- 2. Clustering DBSCAN ----';
-    python3 $SCRIPT_DIR/lidar_cluster.py &
+    python3 $PERCEPTION_DIR/lidar_cluster.py &
     
     # Le wait empêche la fermeture en cas d'erreur
     wait" &
@@ -108,7 +111,7 @@ sleep 2
 echo "🏎️ Lancement Drive..."
 gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/global_drive.py; 
+    python3 $TOOLS_DIR/global_drive.py; 
     exec bash" &
 
 sleep 2

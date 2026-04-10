@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================
-# LAUNCHER - FSDS + YOLO Stéréo + SLAM/Carte
+# LAUNCHER - FSDS + YOLO LiDAR + SLAM/Carte
 # ==========================================
 
 # --- 1. DETECTION AUTOMATIQUE DE ROS ---
@@ -22,8 +22,11 @@ SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 BRIDGE_PATH="$HOME/Formula-Student-Driverless-Simulator/ros2"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PERCEPTION_DIR="$PROJECT_ROOT/perception"
+TOOLS_DIR="$PROJECT_ROOT/tools"
+RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 WS_PATH="$PROJECT_ROOT/ros_workspace"
-RVIZ_CONFIG="$PROJECT_ROOT/slam.rviz"
+RVIZ_CONFIG="$RVIZ_DIR/slam_lidar.rviz"
 
 ROS_CMD="source $ROS_SETUP; source $WS_PATH/install/setup.bash"
 
@@ -38,7 +41,7 @@ echo "Attente demarrage simulateur (10s)..."
 sleep 10
 
 if command -v zenity &>/dev/null; then
-    zenity --info --title="IMT Driverless — SLAM Stereo" \
+    zenity --info --title="IMT Driverless — SLAM LiDAR" \
         --text="Clique sur 'Run Simulation' dans le simulateur FSDS,\npuis clique sur OK pour continuer." \
         --ok-label="Simulation lancee — Continuer" --width=400 2>/dev/null || true
 else
@@ -55,33 +58,33 @@ gnome-terminal --title="BRIDGE ROS2" -- bash -c "
     exec bash" &
 sleep 5
 
-# --- 5. ODOM TF PUBLISHER (crée le frame fsds/map dans le TF) ---
+# --- 5. ODOM TF PUBLISHER ---
 echo "Lancement Odom TF Publisher..."
 gnome-terminal --title="ODOM TF" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/odom_tf_publisher.py;
+    python3 $PERCEPTION_DIR/odom_tf_publisher.py;
     exec bash" &
 sleep 2
 
-# --- 6. YOLO STEREO ---
-echo "Lancement YOLO Stereo..."
-gnome-terminal --title="YOLO STEREO" -- bash -c "
+# --- 6. YOLO LIDAR (detection + Kalman + publication /perception/lidar_detections) ---
+echo "Lancement YOLO LiDAR..."
+gnome-terminal --title="YOLO LIDAR" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/yolo_stereo.py;
+    python3 $PERCEPTION_DIR/yolo_lidar.py;
     exec bash" &
 sleep 3
 
-# --- 7. CONE MAPPER (SLAM) ---
-echo "Lancement Cone Mapper..."
-gnome-terminal --title="CONE MAPPER" -- bash -c "
+# --- 7. CONE MAPPER LIDAR (SLAM) ---
+echo "Lancement Cone Mapper LiDAR..."
+gnome-terminal --title="CONE MAPPER LIDAR" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/cone_mapper.py;
+    python3 $PERCEPTION_DIR/cone_mapper_lidar.py;
     exec bash" &
 sleep 2
 
 # --- 8. RVIZ ---
-echo "Lancement RViz SLAM..."
-gnome-terminal --title="RVIZ SLAM" -- bash -c "
+echo "Lancement RViz SLAM LiDAR..."
+gnome-terminal --title="RVIZ SLAM LIDAR" -- bash -c "
     $ROS_CMD;
     if [ -f \"$RVIZ_CONFIG\" ]; then
         rviz2 -d \"$RVIZ_CONFIG\";
@@ -95,9 +98,9 @@ sleep 2
 echo "Lancement Drive..."
 gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/global_drive.py;
+    python3 $TOOLS_DIR/global_drive.py;
     exec bash" &
 
 sleep 2
-echo "SLAM Stereo stack lancee depuis : $SCRIPT_DIR"
-echo "Topics : /slam/cone_map | /slam/car_path | /slam/stats"
+echo "SLAM LiDAR stack lancee depuis : $SCRIPT_DIR"
+echo "Topics : /slam_lidar/cone_map | /slam/car_path | /slam_lidar/stats"

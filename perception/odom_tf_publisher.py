@@ -11,6 +11,11 @@ TF publié    : fsds/map → fsds/FSCar
 Publication  : /slam/car_path  (nav_msgs/Path)
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -27,14 +32,14 @@ class OdomTFPublisher(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
 
         self.path = Path()
-        self.path.header.frame_id = 'fsds/map'
+        self.path.header.frame_id = CFG['frames']['map']
 
         self.create_subscription(
-            Odometry, '/testing_only/odom',
+            Odometry, CFG['topics']['odometry'],
             self._odom_cb, qos_profile_sensor_data
         )
 
-        self.pub_path = self.create_publisher(Path, '/slam/car_path', 10)
+        self.pub_path = self.create_publisher(Path, CFG['topics']['car_path'], 10)
 
         self.get_logger().info(
             "OdomTFPublisher prêt — publie TF fsds/map → fsds/FSCar"
@@ -44,7 +49,7 @@ class OdomTFPublisher(Node):
         # ── Publie le TF dynamique fsds/map → fsds/FSCar ────────────────────
         t = TransformStamped()
         t.header          = msg.header          # frame_id = fsds/map
-        t.child_frame_id  = 'fsds/FSCar'
+        t.child_frame_id  = CFG['frames']['vehicle']
         t.transform.translation.x = msg.pose.pose.position.x
         t.transform.translation.y = msg.pose.pose.position.y
         t.transform.translation.z = msg.pose.pose.position.z

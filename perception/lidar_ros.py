@@ -1,3 +1,8 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -11,13 +16,9 @@ class LidarFilteringNode(Node):
         super().__init__('lidar_filtering_node')
 
         # Topics
-        self.input_topic = '/lidar/Lidar1'
-        self.output_topic = '/lidar/obstacles' 
-
-        # --- PARAMETRE Z ---
-        # Logs à environ -0.55m
-        # On coupe un peu au-dessus (-0.40m) pour être sûr d'enlever tout le sol.
-        self.Z_THRESHOLD = -0.40
+        self.input_topic  = CFG['topics']['lidar']
+        self.output_topic = CFG['topics']['lidar_filtered']
+        self.Z_THRESHOLD  = CFG['lidar']['z_ground_threshold_m']
 
         # Subscriber 
         self.subscription = self.create_subscription(

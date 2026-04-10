@@ -15,6 +15,11 @@ les cones. Le cone_mapper_lidar.py les affichera en gris jusqu'a fusion
 eventuelle avec YOLO.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -25,29 +30,14 @@ from sklearn.cluster import DBSCAN
 from visualization_msgs.msg import Marker, MarkerArray
 from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose
 
-
-# Rayon de recherche DBSCAN en metres.
-# Un cone FSG fait ~0.28m de diametre ; 0.5m inclut une marge raisonnable.
-DBSCAN_EPS = 0.5
-
-# Nombre minimum de points pour former un cluster valide.
-# En dessous de 3 points, le cluster est considere comme du bruit.
-DBSCAN_MIN_SAMPLES = 3
-
-# Duree de vie des markers RViz en nanosecondes (0.2s).
-# Au-dela, le marker disparait si aucun nouveau message n'est recu.
-MARKER_LIFETIME_NS = 200_000_000
-
-# Taille de la sphere representant chaque cone dans RViz (metres).
-MARKER_SCALE = 0.4
-
-# Distance horizontale maximale acceptee pour un cone (metres).
-# Les points trop loin sont probablement des artefacts ou des obstacles non-cones.
-MAX_CONE_DIST_M = 15.0
-
-# Hauteur maximale d'un cluster pour etre considere comme un cone (metres).
-# Un cone FSG fait 0.325m ; on accepte une marge pour les imprecisions LiDAR.
-MAX_CLUSTER_HEIGHT_M = 0.6
+# ── Paramètres chargés depuis config.yaml ────────────────────────────────────
+_db = CFG['dbscan']
+DBSCAN_EPS           = _db['eps_m']
+DBSCAN_MIN_SAMPLES   = _db['min_samples']
+MAX_CONE_DIST_M      = _db['max_cone_distance_m']
+MAX_CLUSTER_HEIGHT_M = _db['max_cluster_height_m']
+MARKER_LIFETIME_NS   = 200_000_000
+MARKER_SCALE         = 0.4
 
 
 class LidarClusteringNode(Node):
@@ -55,22 +45,23 @@ class LidarClusteringNode(Node):
     def __init__(self):
         super().__init__('lidar_clustering_node')
 
+        _t = CFG['topics']
         self.subscription = self.create_subscription(
             PointCloud2,
-            '/lidar/obstacles',
+            _t['lidar_filtered'],
             self.listener_callback,
             qos_profile_sensor_data
         )
 
         # MarkerArray pour la visualisation RViz
         self.pub_markers = self.create_publisher(
-            MarkerArray, '/lidar/cone_markers', 10
+            MarkerArray, _t['lidar_cone_markers'], 10
         )
 
         # Detection2DArray pour cone_mapper_lidar.py
         # La position 3D est encodee dans hyp.pose.pose.position (repere LiDAR)
         self.pub_detections = self.create_publisher(
-            Detection2DArray, '/perception/lidar_detections', 10
+            Detection2DArray, _t['lidar_detections'], 10
         )
 
         # DBSCAN instancie une seule fois pour eviter la reallocation a chaque frame

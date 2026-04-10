@@ -15,6 +15,11 @@ Différences vs cone_mapper.py (version stéréo) :
   - Publications : /slam_lidar/cone_map et /slam_lidar/stats
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import math
 import rclpy
 import rclpy.duration
@@ -34,8 +39,8 @@ LATCHED_QOS = QoSProfile(
     durability=DurabilityPolicy.TRANSIENT_LOCAL
 )
 
-LIDAR_FRAME = 'fsds/Lidar1'
-MAP_FRAME   = 'fsds/map'
+LIDAR_FRAME = CFG['frames']['lidar']
+MAP_FRAME   = CFG['frames']['map']
 
 COLORS_RGB = {
     0:  (1.0, 1.0, 0.0),
@@ -49,18 +54,19 @@ COLOR_PRIO = {2: 3, 0: 2, 1: 2, -1: 0}
 
 class ConeMapperLidarNode(Node):
 
-    MERGE_DIST         = 1.5
-    COUNT_CAP          = 20
-    PUBLISH_HZ         = 2.0
-    MIN_COUNT          = 3
+    MERGE_DIST         = CFG['slam']['lidar']['merge_distance_m']
+    COUNT_CAP          = CFG['slam']['count_cap']
+    PUBLISH_HZ         = CFG['slam']['publish_hz']
+    MIN_COUNT          = CFG['slam']['min_count']
     MIN_SCORE          = 0.0
 
-    MAX_DEPTH_STRAIGHT = 8.0   # m (LiDAR fiable jusqu'à ~15 m)
-    MAX_DEPTH_TURN     = 5.0   # m (réduit en virage)
-    TURN_YAW_RATE      = 0.3   # rad/s
+    MAX_DEPTH_STRAIGHT = CFG['slam']['lidar']['max_depth_straight_m']
+    MAX_DEPTH_TURN     = CFG['slam']['lidar']['max_depth_turn_m']
+    # LiDAR est fiable même en virage → on n'utilise pas le blocage de virage
+    TURN_YAW_RATE      = CFG['slam']['turn_yaw_rate_threshold']
 
-    MAX_LINE_STEP      = 8.0   # m — gap max entre cônes consécutifs dans la ligne
-    LINE_STRIDE        = 1     # tous les cônes comme points de contrôle (positions LiDAR fiables)
+    MAX_LINE_STEP      = CFG['slam']['max_line_step_m']
+    LINE_STRIDE        = CFG['slam']['line_stride_lidar']
 
     def __init__(self):
         super().__init__('cone_mapper_lidar_node')
@@ -72,15 +78,16 @@ class ConeMapperLidarNode(Node):
         self.next_id  = 0
         self.yaw_rate = 0.0
 
+        _t = CFG['topics']
         self.create_subscription(
-            Detection2DArray, '/perception/lidar_detections',
+            Detection2DArray, _t['lidar_detections'],
             self._detections_cb, 10)
         self.create_subscription(
-            Odometry, '/testing_only/odom',
+            Odometry, _t['odometry'],
             self._odom_cb, qos_profile_sensor_data)
 
-        self.pub_map  = self.create_publisher(MarkerArray, '/slam_lidar/cone_map', LATCHED_QOS)
-        self.pub_stat = self.create_publisher(String,      '/slam_lidar/stats',    10)
+        self.pub_map  = self.create_publisher(MarkerArray, _t['slam_lidar_map'],   LATCHED_QOS)
+        self.pub_stat = self.create_publisher(String,      _t['slam_lidar_stats'], 10)
 
         self.create_timer(1.0 / self.PUBLISH_HZ, self._publish_map)
 
@@ -96,21 +103,21 @@ class ConeMapperLidarNode(Node):
         if not msg.detections:
             return
 
-        turning   = abs(self.yaw_rate) >= self.TURN_YAW_RATE
-        max_depth = self.MAX_DEPTH_TURN if turning else self.MAX_DEPTH_STRAIGHT
+        # LiDAR : positions fiables même en virage → on n'utilise pas le blocage.
+        # On garde uniquement la réduction de profondeur en virage (mesures plus incertaines).
+        turning   = False   # jamais bloqué pour LiDAR
+        max_depth = self.MAX_DEPTH_STRAIGHT
 
+        # TF : on utilise toujours le transform le plus récent disponible.
+        # Le timestamp exact échoue souvent (décalage LiDAR/TF) ; le TF "latest"
+        # introduit une erreur position ≈ vitesse × latence (~3 cm à 1.5 m/s) — acceptable.
         try:
             tf = self.tf_buffer.lookup_transform(
-                MAP_FRAME, LIDAR_FRAME,
-                msg.header.stamp,
-                timeout=rclpy.duration.Duration(seconds=0.1))
-        except Exception:
-            try:
-                tf = self.tf_buffer.lookup_transform(
-                    MAP_FRAME, LIDAR_FRAME, rclpy.time.Time(seconds=0))
-            except Exception as e:
-                self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
-                return
+                MAP_FRAME, LIDAR_FRAME, rclpy.time.Time(seconds=0),
+                timeout=rclpy.duration.Duration(seconds=0.05))
+        except Exception as e:
+            self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
+            return
 
         for det in msg.detections:
             if not det.results:

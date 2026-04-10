@@ -15,6 +15,11 @@ Géométrie de piste connue :
   → COUNT_CAP = 20       (10 tours × ~2 détections/tour → position stable)
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import math
 import rclpy
 import rclpy.duration
@@ -34,8 +39,8 @@ LATCHED_QOS = QoSProfile(
     durability=DurabilityPolicy.TRANSIENT_LOCAL
 )
 
-CAM_FRAME = 'fsds/cam1'
-MAP_FRAME = 'fsds/map'
+CAM_FRAME = CFG['frames']['cam_left']
+MAP_FRAME = CFG['frames']['map']
 
 COLORS_RGB = {
     0:  (1.0, 1.0, 0.0),   # JAUNE  — droite de la piste
@@ -50,28 +55,16 @@ COLOR_PRIO = {2: 3, 0: 2, 1: 2, -1: 0}
 class ConeMapperNode(Node):
 
     # ── Paramètres de fusion ─────────────────────────────────────────────────
-    MERGE_DIST   = 1.5   # m — association détection → cône existant
-    COUNT_CAP    = 20    # cap de n pour la moyenne pondérée (évite la dérive sur 10 tours)
-
-    # ── Filtres de profondeur ────────────────────────────────────────────────
-    MAX_DEPTH_STRAIGHT = 4.0   # m
-    MAX_DEPTH_TURN     = 4.0   # m
-    TURN_YAW_RATE      = 0.3   # rad/s
-
-    # ── Affichage ────────────────────────────────────────────────────────────
-    PUBLISH_HZ    = 2.0
-    MIN_COUNT     = 3     # détections min pour afficher un cône
+    MERGE_DIST   = CFG['slam']['stereo']['merge_distance_m']
+    COUNT_CAP    = CFG['slam']['count_cap']
+    MAX_DEPTH_STRAIGHT = CFG['slam']['stereo']['max_depth_straight_m']
+    MAX_DEPTH_TURN     = CFG['slam']['stereo']['max_depth_turn_m']
+    TURN_YAW_RATE      = CFG['slam']['turn_yaw_rate_threshold']
+    PUBLISH_HZ    = CFG['slam']['publish_hz']
+    MIN_COUNT     = CFG['slam']['min_count']
     MIN_SCORE     = 0.0
-
-    # ── Lignes de piste ──────────────────────────────────────────────────────
-    # Espacement max accepté entre deux cônes consécutifs sur la même ligne.
-    # 5 m d'espacement nominal + 40 % de marge = 7 m.
-    # Au-delà → on ne relie pas (trait parasite évité).
-    MAX_LINE_STEP = 7.0   # m
-    # Pas de sous-échantillonnage pour les points de contrôle Catmull-Rom.
-    # Avec STRIDE=3 : on utilise 1 cône sur 3 → un cône mal placé n'est pas
-    # un point de contrôle direct et n'infléchit plus la courbe.
-    LINE_STRIDE   = 3
+    MAX_LINE_STEP = CFG['slam']['max_line_step_m']
+    LINE_STRIDE   = CFG['slam']['line_stride_stereo']
 
     def __init__(self):
         super().__init__('cone_mapper_node')
@@ -83,15 +76,16 @@ class ConeMapperNode(Node):
         self.next_id  = 0
         self.yaw_rate = 0.0
 
+        _t = CFG['topics']
         self.create_subscription(
-            Detection2DArray, '/perception/stereo_detections',
+            Detection2DArray, _t['stereo_detections'],
             self._detections_cb, 10)
         self.create_subscription(
-            Odometry, '/testing_only/odom',
+            Odometry, _t['odometry'],
             self._odom_cb, qos_profile_sensor_data)
 
-        self.pub_map  = self.create_publisher(MarkerArray, '/slam/cone_map', LATCHED_QOS)
-        self.pub_stat = self.create_publisher(String,      '/slam/stats',    10)
+        self.pub_map  = self.create_publisher(MarkerArray, _t['slam_stereo_map'],   LATCHED_QOS)
+        self.pub_stat = self.create_publisher(String,      _t['slam_stereo_stats'], 10)
 
         self.create_timer(1.0 / self.PUBLISH_HZ, self._publish_map)
 
@@ -113,18 +107,16 @@ class ConeMapperNode(Node):
         max_depth = self.MAX_DEPTH_TURN if turning else self.MAX_DEPTH_STRAIGHT
 
         # TF caméra → monde (timestamp exact, fallback latest)
+        # TF : transform le plus récent disponible. L'erreur de position induite
+        # (vitesse × latence ≈ 3 cm à 1.5 m/s) est bien inférieure à l'erreur
+        # de profondeur stéréo (±1-2 m). Évite les échecs fréquents sur timestamp exact.
         try:
             tf = self.tf_buffer.lookup_transform(
-                MAP_FRAME, CAM_FRAME,
-                msg.header.stamp,
-                timeout=rclpy.duration.Duration(seconds=0.1))
-        except Exception:
-            try:
-                tf = self.tf_buffer.lookup_transform(
-                    MAP_FRAME, CAM_FRAME, rclpy.time.Time(seconds=0))
-            except Exception as e:
-                self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
-                return
+                MAP_FRAME, CAM_FRAME, rclpy.time.Time(seconds=0),
+                timeout=rclpy.duration.Duration(seconds=0.05))
+        except Exception as e:
+            self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
+            return
 
         for det in msg.detections:
             if not det.results:

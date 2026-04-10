@@ -10,8 +10,16 @@ Publications :
   /evaluation/markers — MarkerArray (flèches d'erreur + GT en blanc dans RViz)
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import math
 import argparse
+import subprocess
+import threading
+import yaml
 import rclpy
 import rclpy.duration
 from rclpy.node import Node
@@ -26,7 +34,7 @@ try:
 except ImportError:
     FS_MSGS_OK = False
 
-MAP_FRAME = 'fsds/map'
+MAP_FRAME = CFG['frames']['map']
 
 LATCHED_QOS = QoSProfile(
     depth=1,
@@ -54,10 +62,15 @@ class ConeEvaluatorNode(Node):
         # ── Ground truth via /testing_only/track ─────────────────────────────
         if FS_MSGS_OK:
             self.create_subscription(
-                Track, '/testing_only/track',
-                self._track_cb, 10
+                Track, CFG['topics']['ground_truth_track'],
+                self._track_cb,
+                QoSProfile(
+                    depth=10,
+                    reliability=ReliabilityPolicy.RELIABLE,
+                    durability=DurabilityPolicy.VOLATILE
+                )
             )
-            self.get_logger().info("Souscription à /testing_only/track (fs_msgs/Track)")
+            self.get_logger().info(f"Souscription à {CFG['topics']['ground_truth_track']} (fs_msgs/Track)")
         else:
             self.get_logger().error(
                 "fs_msgs non disponible — sourcer le workspace FSDS :\n"
@@ -71,8 +84,12 @@ class ConeEvaluatorNode(Node):
             LATCHED_QOS
         )
 
-        self.pub_viz  = self.create_publisher(MarkerArray, '/evaluation/markers', LATCHED_QOS)
-        self.pub_stat = self.create_publisher(String,      '/evaluation/stats',   10)
+        self.pub_viz  = self.create_publisher(MarkerArray, CFG['topics']['eval_markers'], LATCHED_QOS)
+        self.pub_stat = self.create_publisher(String,      CFG['topics']['eval_stats'],   10)
+
+        # Fallback : si le message GT a été publié avant notre démarrage (VOLATILE),
+        # on le récupère via ros2 topic echo après 3 secondes.
+        self._gt_fallback_timer = self.create_timer(3.0, self._gt_fallback_once)
 
         self.get_logger().info(f"Écoute {map_topic} | GT: /testing_only/track")
 
@@ -93,6 +110,53 @@ class ConeEvaluatorNode(Node):
         if not self._gt_pub_done:
             self._publish_gt_markers()
             self._gt_pub_done = True
+
+    # ── Fallback GT (si message publié avant notre démarrage) ────────────────
+    def _gt_fallback_once(self):
+        """Timer one-shot : annule après la première exécution."""
+        self._gt_fallback_timer.cancel()
+        if self.gt_cones:
+            return   # déjà reçu via subscription
+        self.get_logger().info(
+            "GT non reçu via subscription — tentative via ros2 topic echo…"
+        )
+        threading.Thread(target=self._fetch_gt_subprocess, daemon=True).start()
+
+    def _fetch_gt_subprocess(self):
+        """Lit le topic GT via sous-processus et peuple self.gt_cones."""
+        try:
+            result = subprocess.run(
+                ['ros2', 'topic', 'echo', '--once',
+                 CFG['topics']['ground_truth_track']],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                self.get_logger().error("ros2 topic echo GT : aucune réponse")
+                return
+            data = yaml.safe_load(result.stdout)
+            if not isinstance(data, dict) or 'track' not in data:
+                self.get_logger().error("Format GT inattendu")
+                return
+            for cone in data['track']:
+                loc = cone.get('location', {})
+                self.gt_cones.append({
+                    'x':     float(loc.get('x', 0.0)),
+                    'y':     float(loc.get('y', 0.0)),
+                    'z':     float(loc.get('z', 0.0)),
+                    'color': FS_COLOR.get(cone.get('color', 4), -1)
+                })
+            self.get_logger().info(
+                f"✓ {len(self.gt_cones)} cônes GT récupérés via fallback"
+            )
+            if not self._gt_pub_done:
+                self._publish_gt_markers()
+                self._gt_pub_done = True
+        except subprocess.TimeoutExpired:
+            self.get_logger().error(
+                "Timeout fallback GT — le bridge FSDS est-il lancé ?"
+            )
+        except Exception as e:
+            self.get_logger().error(f"Fallback GT échoué : {e}")
 
     # ── Marqueurs GT (blanc semi-transparent) ─────────────────────────────────
     def _publish_gt_markers(self):
@@ -127,7 +191,7 @@ class ConeEvaluatorNode(Node):
              'z': mk.pose.position.z,
              'id': mk.id}
             for mk in msg.markers
-            if mk.ns == 'cone_map' and mk.type == Marker.CYLINDER
+            if mk.ns in ('cone_map', 'cone_map_lidar') and mk.type == Marker.CYLINDER
         ]
 
         n_det = len(detected)
@@ -231,7 +295,7 @@ class ConeEvaluatorNode(Node):
 
 def main(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--map', default='/slam_lidar/cone_map')
+    parser.add_argument('--map', default=CFG['topics']['slam_lidar_map'])
     parsed, _ = parser.parse_known_args()
 
     rclpy.init(args=args)

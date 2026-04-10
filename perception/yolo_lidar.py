@@ -21,7 +21,11 @@ Publications :
   /yolo_lidar/cone_markers — markers 3D (repère LiDAR)
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_loader import CFG
+
 import math
 import numpy as np
 import cv2
@@ -139,17 +143,15 @@ class YoloLidarNode(Node):
     NAMES      = {0: "JAUNE",       1: "BLEU",       2: "ORANGE"}
     COLORS_RGB = {0: (1.0, 1.0, 0.0), 1: (0.0, 0.0, 1.0), 2: (1.0, 0.5, 0.0)}
 
-    # ── Filtrage LiDAR ───────────────────────────────────────────────────────
-    Z_GROUND     = -0.40   # m — filtre sol
-    MARGIN       = 10      # px — marge fixe bbox
-    MARGIN_RATIO = 0.20    # marge adaptative = 20 % de la plus petite dim
-    MIN_PTS      = 3       # points LiDAR min après rejet outliers
-    OUTLIER_STD  = 0.50    # m — points à ±OUTLIER_STD de la médiane sont rejetés
-
-    # ── Tracking ─────────────────────────────────────────────────────────────
-    MIN_HITS   = 3         # détections min pour publier un cône
-    MAX_MISSES = 8         # frames sans détection avant suppression du tracker
-    ASSOC_DIST = 1.5       # m — distance 3D max pour associer à un tracker existant
+    # ── Paramètres chargés depuis config.yaml ────────────────────────────────
+    Z_GROUND     = CFG['lidar']['z_ground_threshold_m']
+    MARGIN       = CFG['lidar']['bbox_margin_px']
+    MARGIN_RATIO = CFG['lidar']['bbox_margin_ratio']
+    MIN_PTS      = CFG['lidar']['min_points_in_bbox']
+    OUTLIER_STD  = CFG['lidar']['outlier_std_m']
+    MIN_HITS     = CFG['tracking']['min_hits']
+    MAX_MISSES   = CFG['tracking']['max_misses']
+    ASSOC_DIST   = CFG['tracking']['association_distance_m']
 
     def __init__(self):
         super().__init__('yolo_lidar_node')
@@ -182,17 +184,18 @@ class YoloLidarNode(Node):
         self.trackers: list[ConeTracker] = []
 
         # Subscribers
+        _t = CFG['topics']
         self.create_subscription(
-            Image, '/fsds/cam1/image_color',
+            Image, _t['camera_left'],
             self._image_cb, qos_profile_sensor_data)
         self.create_subscription(
-            PointCloud2, '/lidar/Lidar1',
+            PointCloud2, _t['lidar'],
             self._lidar_cb, qos_profile_sensor_data)
 
         # Publishers
-        self.pub_debug   = self.create_publisher(Image,            '/yolo_lidar/debug_image',   10)
-        self.pub_markers = self.create_publisher(MarkerArray,      '/yolo_lidar/cone_markers',  10)
-        self.pub_dets    = self.create_publisher(Detection2DArray, '/perception/lidar_detections', 10)
+        self.pub_debug   = self.create_publisher(Image,            _t['debug_image_yolo_lidar'],   10)
+        self.pub_markers = self.create_publisher(MarkerArray,      _t['debug_markers_yolo_lidar'],  10)
+        self.pub_dets    = self.create_publisher(Detection2DArray, _t['lidar_detections'], 10)
 
         self.get_logger().info(
             f"YoloLidarNode prêt (hits≥{self.MIN_HITS}, misses<{self.MAX_MISSES}, "

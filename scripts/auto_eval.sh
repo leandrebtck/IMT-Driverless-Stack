@@ -4,6 +4,9 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PERCEPTION_DIR="$PROJECT_ROOT/perception"
+TOOLS_DIR="$PROJECT_ROOT/tools"
+RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 WS_PATH="$PROJECT_ROOT/ros_workspace"
 
 source /opt/ros/iron/setup.bash 2>/dev/null || source /opt/ros/galactic/setup.bash
@@ -19,7 +22,7 @@ gnome-terminal --title="CONE EVALUATOR" -- bash -c "
   source /opt/ros/iron/setup.bash 2>/dev/null || source /opt/ros/galactic/setup.bash
   source "$HOME/Formula-Student-Driverless-Simulator/ros2/install/setup.bash" 2>/dev/null
   [ -f '$WS_PATH/install/setup.bash' ] && source '$WS_PATH/install/setup.bash'
-  python3 '$SCRIPT_DIR/cone_evaluator.py' --map '$MAP_TOPIC'
+  python3 '$PERCEPTION_DIR/cone_evaluator.py' --map '$MAP_TOPIC'
   exec bash"
 
 sleep 2
@@ -29,7 +32,7 @@ gnome-terminal --title="EVAL DASHBOARD" -- bash -c "
   source /opt/ros/iron/setup.bash 2>/dev/null || source /opt/ros/galactic/setup.bash
   source "$HOME/Formula-Student-Driverless-Simulator/ros2/install/setup.bash" 2>/dev/null
   [ -f '$WS_PATH/install/setup.bash' ] && source '$WS_PATH/install/setup.bash'
-  python3 '$SCRIPT_DIR/eval_dashboard.py'
+  python3 '$TOOLS_DIR/eval_dashboard.py'
   exec bash"
 
 echo "=== Dashboard lancé. Utilisez Ctrl+C pour arrêter. ==="

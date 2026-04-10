@@ -23,6 +23,9 @@ ROS_SETUP="/opt/ros/$MY_ROS_DISTRO/setup.bash"
 SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PERCEPTION_DIR="$PROJECT_ROOT/perception"
+TOOLS_DIR="$PROJECT_ROOT/tools"
+RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
 # --- 3. GESTION DU WORKSPACE ---
@@ -80,7 +83,7 @@ echo "Lancement Odom TF Publisher..."
 gnome-terminal --title="ODOM TF" -- bash -c "
     $ROS_CMD;
     echo '---- Odom TF Publisher ----';
-    python3 $SCRIPT_DIR/odom_tf_publisher.py;
+    python3 $PERCEPTION_DIR/odom_tf_publisher.py;
     exec bash" &
 sleep 2
 
@@ -90,15 +93,15 @@ gnome-terminal --title="LIDAR PIPELINE" -- bash -c "
     $ROS_CMD;
 
     echo '---- 1. Filtre Sol (Z > -0.40m) ----';
-    python3 $SCRIPT_DIR/lidar_ros.py &
+    python3 $PERCEPTION_DIR/lidar_ros.py &
     sleep 2;
 
     echo '---- 2. Clustering DBSCAN + Publication detections ----';
-    python3 $SCRIPT_DIR/lidar_cluster.py &
+    python3 $PERCEPTION_DIR/lidar_cluster.py &
     sleep 2;
 
     echo '---- 3. Cone Mapper LiDAR (carte persistante) ----';
-    python3 $SCRIPT_DIR/cone_mapper_lidar.py &
+    python3 $PERCEPTION_DIR/cone_mapper_lidar.py &
 
     wait" &
 sleep 3
@@ -107,7 +110,7 @@ sleep 3
 echo "Lancement Global Drive..."
 gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
     $ROS_CMD;
-    python3 $SCRIPT_DIR/global_drive.py; 
+    python3 $TOOLS_DIR/global_drive.py; 
     exec bash" &
 sleep 3
 
