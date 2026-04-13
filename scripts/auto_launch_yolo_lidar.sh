@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-# 🚀 LAUNCHER INTELLIGENT - FSDS + FULL STACK
+# LAUNCHER INTELLIGENT - FSDS + FULL STACK
 # ==========================================
 
 # --- 1. DÉTECTION AUTOMATIQUE DE ROS (Iron / Galactic / Humble) ---
