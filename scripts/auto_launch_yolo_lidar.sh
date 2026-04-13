@@ -29,15 +29,20 @@ RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
 # --- 3. GESTION DU WORKSPACE (Sourcer le bon fichier) ---
-# On prépare la commande qui sera exécutée dans chaque terminal
+# Compilation automatique si le workspace n'est pas encore compile
+if [ -d "$INTERNAL_WS/src" ] && [ ! -f "$INTERNAL_WS/install/setup.bash" ]; then
+    echo "Compilation du workspace requise. Patientez..."
+    bash -c "source $ROS_SETUP && cd $INTERNAL_WS && colcon build --symlink-install" || { echo "ECHEC COMPILATION"; exit 1; }
+fi
+
 if [ -f "$INTERNAL_WS/install/setup.bash" ]; then
-    echo "📂 Utilisation du Workspace interne : $INTERNAL_WS"
+    echo "Utilisation du Workspace interne : $INTERNAL_WS"
     WS_SETUP="$INTERNAL_WS/install/setup.bash"
 elif [ -f "$HOME/Workspace_ROS2/install/setup.bash" ]; then
-    echo "📂 Utilisation du Workspace global : ~/Workspace_ROS2"
+    echo "Utilisation du Workspace global : ~/Workspace_ROS2"
     WS_SETUP="$HOME/Workspace_ROS2/install/setup.bash"
 else
-    echo "⚠️  Aucun Workspace compilé trouvé. YOLO fonctionnera, mais Drive risque d'échouer."
+    echo "Aucun Workspace compile trouve. fs_msgs sera indisponible."
     WS_SETUP=""
 fi
 

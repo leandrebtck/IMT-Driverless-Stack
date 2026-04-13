@@ -28,7 +28,22 @@ RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 WS_PATH="$PROJECT_ROOT/ros_workspace"
 RVIZ_CONFIG="$RVIZ_DIR/slam.rviz"
 
-ROS_CMD="source $ROS_SETUP; source $WS_PATH/install/setup.bash"
+# --- GESTION DU WORKSPACE ---
+if [ -d "$WS_PATH/src" ] && [ ! -f "$WS_PATH/install/setup.bash" ]; then
+    echo "Compilation du workspace requise. Patientez..."
+    bash -c "source $ROS_SETUP && cd $WS_PATH && colcon build --symlink-install" || { echo "ECHEC COMPILATION"; exit 1; }
+fi
+
+if [ -f "$WS_PATH/install/setup.bash" ]; then
+    ROS_CMD="source $ROS_SETUP; source $WS_PATH/install/setup.bash"
+elif [ -f "$HOME/Workspace_ROS2/install/setup.bash" ]; then
+    echo "Pas de workspace interne. Utilisation de ~/Workspace_ROS2..."
+    ROS_CMD="source $ROS_SETUP; source $HOME/Workspace_ROS2/install/setup.bash"
+else
+    echo "Aucun workspace compile trouve. fs_msgs sera indisponible."
+    ROS_CMD="source $ROS_SETUP"
+fi
+
 STEREO_MAP_TOPIC="/slam/cone_map"
 
 # --- 3. SIMULATEUR ---
