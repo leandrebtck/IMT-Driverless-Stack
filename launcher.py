@@ -11,7 +11,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 # Import du collecteur de métriques système depuis system_monitor.py
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'python_scripts', 'performance'))
 try:
     from system_monitor import DataCollector, pct_color, bytes_to_str, GPU_OK
     MONITOR_OK = True
@@ -246,7 +246,7 @@ class MonitorPanel(tk.Frame):
         self.after(1000, self._update)
 
     def _open_full(self):
-        script = os.path.join(REPO_ROOT, 'tools', 'system_monitor.py')
+        script = os.path.join(REPO_ROOT, 'python_scripts', 'performance', 'system_monitor.py')
         subprocess.Popen([sys.executable, script])
 
 

@@ -1,7 +1,7 @@
 #!/bin/bash
-# ==========================================
-# LAUNCHER - FSDS + YOLO LiDAR + SLAM/Carte
-# ==========================================
+# ============================================================
+# LAUNCHER - FSDS + YOLO LiDAR + SLAM + Centerline Follower
+# ============================================================
 
 # --- 1. DETECTION AUTOMATIQUE DE ROS ---
 if [ -f "/opt/ros/iron/setup.bash" ]; then
@@ -30,23 +30,9 @@ RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 WS_PATH="$PROJECT_ROOT/ros_workspace"
 RVIZ_CONFIG="$RVIZ_DIR/slam_lidar.rviz"
 
-# --- 3. GESTION DU WORKSPACE ---
-if [ -d "$WS_PATH/src" ] && [ ! -f "$WS_PATH/install/setup.bash" ]; then
-    echo "Compilation du workspace requise. Patientez..."
-    bash -c "source $ROS_SETUP && cd $WS_PATH && colcon build --symlink-install" || { echo "ECHEC COMPILATION"; exit 1; }
-fi
+ROS_CMD="source $ROS_SETUP; source $WS_PATH/install/setup.bash"
 
-if [ -f "$WS_PATH/install/setup.bash" ]; then
-    ROS_CMD="source $ROS_SETUP; source $WS_PATH/install/setup.bash"
-elif [ -f "$HOME/Workspace_ROS2/install/setup.bash" ]; then
-    echo "Pas de workspace interne. Utilisation de ~/Workspace_ROS2..."
-    ROS_CMD="source $ROS_SETUP; source $HOME/Workspace_ROS2/install/setup.bash"
-else
-    echo "Aucun workspace compile trouve. fs_msgs sera indisponible."
-    ROS_CMD="source $ROS_SETUP"
-fi
-
-# --- 4. SIMULATEUR ---
+# --- 3. SIMULATEUR ---
 echo "Lancement du simulateur..."
 gnome-terminal --title="SIMULATEUR" -- bash -c "
     cd $SIM_PATH;
@@ -57,7 +43,7 @@ echo "Attente demarrage simulateur (10s)..."
 sleep 10
 
 if command -v zenity &>/dev/null; then
-    zenity --info --title="IMT Driverless — SLAM LiDAR" \
+    zenity --info --title="IMT Driverless — Centerline LiDAR" \
         --text="Clique sur 'Run Simulation' dans le simulateur FSDS,\npuis clique sur OK pour continuer." \
         --ok-label="Simulation lancee — Continuer" --width=400 2>/dev/null || true
 else
@@ -82,7 +68,7 @@ gnome-terminal --title="ODOM TF" -- bash -c "
     exec bash" &
 sleep 2
 
-# --- 6. YOLO LIDAR (detection + Kalman + publication /perception/lidar_detections) ---
+# --- 6. YOLO LIDAR ---
 echo "Lancement YOLO LiDAR..."
 gnome-terminal --title="YOLO LIDAR" -- bash -c "
     $ROS_CMD;
@@ -99,7 +85,7 @@ gnome-terminal --title="CONE MAPPER LIDAR" -- bash -c "
 sleep 2
 
 # --- 8. RVIZ ---
-echo "Lancement RViz SLAM LiDAR..."
+echo "Lancement RViz..."
 gnome-terminal --title="RVIZ SLAM LIDAR" -- bash -c "
     $ROS_CMD;
     if [ -f \"$RVIZ_CONFIG\" ]; then
@@ -110,13 +96,13 @@ gnome-terminal --title="RVIZ SLAM LIDAR" -- bash -c "
     exec bash" &
 sleep 2
 
-# --- 9. DRIVE ---
-echo "Lancement Drive..."
-gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
+# --- 9. CENTERLINE FOLLOWER ---
+echo "Lancement Centerline Follower (pilotage autonome)..."
+gnome-terminal --title="CENTERLINE FOLLOWER" -- bash -c "
     $ROS_CMD;
-    python3 $CONTROL_DIR/global_drive.py;
+    python3 $CONTROL_DIR/centerline_follower.py --map /slam_lidar/cone_map;
     exec bash" &
 
 sleep 2
-echo "SLAM LiDAR stack lancee depuis : $SCRIPT_DIR"
-echo "Topics : /slam_lidar/cone_map | /slam/car_path | /slam_lidar/stats"
+echo "Stack Centerline LiDAR lancee depuis : $SCRIPT_DIR"
+echo "Topics : /slam_lidar/cone_map | /control_command"

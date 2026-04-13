@@ -19,8 +19,10 @@ ROS_SETUP="/opt/ros/$MY_ROS_DISTRO/setup.bash"
 # --- 2. CHEMINS ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PERCEPTION_DIR="$PROJECT_ROOT/perception"
-TOOLS_DIR="$PROJECT_ROOT/tools"
+PERCEPTION_DIR="$PROJECT_ROOT/python_scripts/1perception"
+SLAM_DIR="$PROJECT_ROOT/python_scripts/2slam"
+CONTROL_DIR="$PROJECT_ROOT/python_scripts/3control"
+PERF_DIR="$PROJECT_ROOT/python_scripts/performance"
 RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 WS_PATH="$PROJECT_ROOT/ros_workspace"
 
@@ -55,7 +57,7 @@ sleep 2
 # 2. Dashboard graphique (tkinter, thread principal)
 gnome-terminal --title="EVAL DASHBOARD" -- bash -c "
   $ROS_CMD;
-  python3 '$TOOLS_DIR/eval_dashboard.py';
+  python3 '$PERF_DIR/eval_dashboard.py';
   exec bash"
 
 echo "=== Dashboard lance. Utilisez Ctrl+C pour arreter. ==="

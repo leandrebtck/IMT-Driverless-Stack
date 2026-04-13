@@ -21,7 +21,7 @@ Stratégie vitesse : impulsions (comme pilotage manuel Z bref).
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from config_loader import CFG
 
 import math
@@ -51,12 +51,11 @@ MIN_AHEAD       = 0.8   # m — distance min pour considérer un point "devant"
 SPEED_TARGET    = 1.5   # m/s — cible
 SPEED_MAX       = 2.0   # m/s — max absolu
 THROTTLE_PULSE  = 0.35  # impulsion gaz
-BRAKE_LIGHT     = 0.15  # frein léger (trop vite)
+BRAKE_LIGHT     = 0.40  # frein léger (trop vite)
 BRAKE_CORNER    = 0.55  # frein fort (virage serré)
 CORNER_STEER    = 0.45  # |steering| → virage
+SPEED_CORNER_MIN = 0.4  # m/s — en dessous, ne plus freiner (évite blocage)
 
-# ── Sécurité ──────────────────────────────────────────────────────────────────
-LOST_TIMEOUT_S  = 3.0   # s sans waypoint devant → arrêt d'urgence
 
 # ── Géométrie piste ───────────────────────────────────────────────────────────
 MAX_TRACK_WIDTH = 9.0   # m — écart max jaune↔bleu valide
@@ -93,12 +92,12 @@ class CenterlineFollower(Node):
         self.car_yaw    = 0.0
         self.speed      = 0.0
         self._odom_ok   = False
-        self._last_target_t = self.get_clock().now()
 
         # Cônes bruts (depuis la carte SLAM complète)
-        self.yellow_cones: list = []
-        self.blue_cones:   list = []
-        self.gray_cones:   list = []
+        self.yellow_cones:  list = []
+        self.blue_cones:    list = []
+        self.orange_cones:  list = []
+        self.gray_cones:    list = []
 
         # Chemin mémorisé : liste ordonnée de midpoints (world frame)
         self._waypoints: list = []
@@ -130,15 +129,16 @@ class CenterlineFollower(Node):
         self._odom_ok = True
 
     def _map_cb(self, msg: MarkerArray):
-        yellow, blue, gray = [], [], []
+        yellow, blue, orange, gray = [], [], [], []
         for mk in msg.markers:
             if mk.ns not in _CONE_NS or mk.type != Marker.CYLINDER:
                 continue
             r, g, b = mk.color.r, mk.color.g, mk.color.b
             pos = (mk.pose.position.x, mk.pose.position.y)
-            if   r > 0.8 and g > 0.8 and b < 0.2:   yellow.append(pos)
-            elif b > 0.7 and r < 0.3:                blue.append(pos)
-            else:                                     gray.append(pos)
+            if   r > 0.8 and g > 0.8 and b < 0.2:          yellow.append(pos)
+            elif b > 0.7 and r < 0.3:                       blue.append(pos)
+            elif r > 0.8 and 0.2 < g < 0.7 and b < 0.2:   orange.append(pos)
+            else:                                            gray.append(pos)
 
         # Fallback géométrique si LiDAR sans couleurs (tous gris)
         if not yellow and not blue and gray and self._odom_ok:
@@ -147,43 +147,84 @@ class CenterlineFollower(Node):
                 if xc > 0:
                     (blue if yc > 0 else yellow).append((px, py))
 
-        self.yellow_cones = yellow
-        self.blue_cones   = blue
-        self.gray_cones   = gray
+        self.yellow_cones  = yellow
+        self.blue_cones    = blue
+        self.orange_cones  = orange
+        self.gray_cones    = gray
 
         # Reconstruction du chemin complet depuis la carte mémorisée
-        mids = self._all_midpoints(yellow, blue)
+        mids = self._all_midpoints(yellow, blue, orange)
         if len(mids) >= MIN_WAYPOINTS:
             self._waypoints = self._order_path(mids)
 
     # ── Calcul des midpoints ──────────────────────────────────────────────────
 
-    def _all_midpoints(self, yellow, blue) -> list:
+    def _all_midpoints(self, yellow, blue, orange=None) -> list:
         """
         Midpoints entre TOUS les cônes jaunes et bleus stockés dans la carte.
         Chaque jaune est apparié au bleu le plus proche (< MAX_TRACK_WIDTH).
+        Les cônes orange (portail départ/arrivée) sont appariés entre eux
+        pour ne pas laisser un trou dans le chemin à la ligne de départ.
         """
         pts = []
-        if not yellow or not blue:
-            return pts
-        for (yx, yy) in yellow:
-            bd, bb = MAX_TRACK_WIDTH, None
-            for (bx, by) in blue:
-                d = math.hypot(yx - bx, yy - by)
-                if d < bd:
-                    bd, bb = d, (bx, by)
-            if bb:
-                pts.append(((yx + bb[0]) * 0.5, (yy + bb[1]) * 0.5))
+        if yellow and blue:
+            for (yx, yy) in yellow:
+                bd, bb = MAX_TRACK_WIDTH, None
+                for (bx, by) in blue:
+                    d = math.hypot(yx - bx, yy - by)
+                    if d < bd:
+                        bd, bb = d, (bx, by)
+                if bb:
+                    pts.append(((yx + bb[0]) * 0.5, (yy + bb[1]) * 0.5))
+
+        # Portail orange : midpoint entre chaque paire d'oranges proches
+        if orange and len(orange) >= 2:
+            used = set()
+            for i, (ox, oy) in enumerate(orange):
+                if i in used:
+                    continue
+                bd, bj = MAX_TRACK_WIDTH, None
+                for j, (ox2, oy2) in enumerate(orange):
+                    if j == i or j in used:
+                        continue
+                    d = math.hypot(ox - ox2, oy - oy2)
+                    if d < bd:
+                        bd, bj = d, j
+                if bj is not None:
+                    ox2, oy2 = orange[bj]
+                    pts.append(((ox + ox2) * 0.5, (oy + oy2) * 0.5))
+                    used.add(i); used.add(bj)
+
         return pts
 
     def _order_path(self, midpoints: list) -> list:
         """
-        Ordonne les midpoints en chemin circulaire par angle depuis leur centroïde.
-        Fonctionne pour les circuits fermés ou semi-fermés (≥ 4 midpoints).
+        Ordonne les midpoints en chemin par plus proche voisin depuis la voiture.
+        Robuste pour tout tracé (convexe ou non), contrairement au tri angulaire.
+        Le chemin commence au midpoint le plus proche devant la voiture.
         """
-        cx = sum(p[0] for p in midpoints) / len(midpoints)
-        cy = sum(p[1] for p in midpoints) / len(midpoints)
-        return sorted(midpoints, key=lambda p: math.atan2(p[1] - cy, p[0] - cx))
+        if len(midpoints) <= 1:
+            return list(midpoints)
+
+        remaining = list(midpoints)
+
+        # Départ : midpoint le plus proche de la voiture parmi ceux qui sont devant
+        ahead = [(i, p) for i, p in enumerate(remaining)
+                 if _world_to_car(p[0], p[1],
+                                  self.car_x, self.car_y, self.car_yaw)[0] > 0]
+        candidates = ahead if ahead else list(enumerate(remaining))
+        start_idx = min(candidates,
+                        key=lambda ip: math.hypot(ip[1][0] - self.car_x,
+                                                  ip[1][1] - self.car_y))[0]
+
+        ordered = [remaining.pop(start_idx)]
+        while remaining:
+            last = ordered[-1]
+            nearest = min(range(len(remaining)),
+                          key=lambda i: math.hypot(remaining[i][0] - last[0],
+                                                   remaining[i][1] - last[1]))
+            ordered.append(remaining.pop(nearest))
+        return ordered
 
     # ── Suivi de chemin ───────────────────────────────────────────────────────
 
@@ -204,20 +245,11 @@ class CenterlineFollower(Node):
                               path[i][0] - self.car_x,
                               path[i][1] - self.car_y))
 
-        # 2. Direction de marche : comparer les deux voisins dans le repère voiture
-        next_fwd = (closest_idx + 1) % n
-        next_bwd = (closest_idx - 1) % n
-        xc_fwd, _ = _world_to_car(path[next_fwd][0], path[next_fwd][1],
-                                   self.car_x, self.car_y, self.car_yaw)
-        xc_bwd, _ = _world_to_car(path[next_bwd][0], path[next_bwd][1],
-                                   self.car_x, self.car_y, self.car_yaw)
-        direction = 1 if xc_fwd >= xc_bwd else -1
-
-        # 3. Marcher le long du chemin jusqu'à LOOKAHEAD_DIST cumulé
+        # 2. Marcher en avant (direction +1 : le chemin est ordonné depuis la voiture)
         accumulated = 0.0
         idx = closest_idx
         for _ in range(n):
-            next_idx = (idx + direction) % n
+            next_idx = (idx + 1) % n
             step = math.hypot(path[next_idx][0] - path[idx][0],
                               path[next_idx][1] - path[idx][1])
             accumulated += step
@@ -225,8 +257,8 @@ class CenterlineFollower(Node):
             if accumulated >= LOOKAHEAD_DIST:
                 return path[idx]
 
-        # Chemin trop court → retourner le point opposé sur le cercle
-        return path[(closest_idx + direction * max(1, n // 2)) % n]
+        # Chemin trop court → retourner le point le plus loin en avant
+        return path[(closest_idx + max(1, n // 2)) % n]
 
     def _find_local_target(self) -> tuple | None:
         """
@@ -245,7 +277,7 @@ class CenterlineFollower(Node):
 
         # ── Cas 1 : les deux côtés disponibles ────────────────────────────────
         if yellow and blue:
-            mids = self._all_midpoints(yellow, blue)
+            mids = self._all_midpoints(yellow, blue, self.orange_cones)
             ahead = []
             for (mx, my) in mids:
                 xc, yc = _world_to_car(mx, my, cx, cy, yaw)
@@ -287,7 +319,18 @@ class CenterlineFollower(Node):
         cmd = ControlCommand()
 
         if not self._odom_ok:
-            cmd.brake = 1.0
+            # Odom pas encore reçu : avancer doucement tout droit
+            cmd.throttle = THROTTLE_PULSE
+            cmd.brake    = 0.0
+            cmd.steering = 0.0
+            self.pub_cmd.publish(cmd)
+            return
+
+        # Frein prioritaire si vitesse déjà trop élevée (toutes branches confondues)
+        if self.speed > SPEED_MAX:
+            cmd.throttle = 0.0
+            cmd.brake    = BRAKE_LIGHT
+            cmd.steering = 0.0
             self.pub_cmd.publish(cmd)
             return
 
@@ -307,31 +350,21 @@ class CenterlineFollower(Node):
             # Fallback : midpoints locaux (1er tour, chemin pas encore construit)
             local = self._find_local_target()
             if local is None:
-                dt_lost = (self.get_clock().now() - self._last_target_t).nanoseconds * 1e-9
-                if dt_lost > LOST_TIMEOUT_S:
-                    cmd.brake = 1.0
-                    self.get_logger().warn(
-                        f"Piste perdue {dt_lost:.1f}s — ARRÊT",
-                        throttle_duration_sec=1.0)
-                else:
-                    # Aucune cible mais délai pas dépassé : avancer lentement tout droit
-                    # pour trouver de nouveaux cônes plutôt que bloquer sur place
-                    if self.speed < 0.8:
-                        cmd.throttle = THROTTLE_PULSE
-                    cmd.steering = 0.0
-                    self.get_logger().info(
-                        f"Aucun cône visible — avance droit "
-                        f"(J={len(self.yellow_cones)} B={len(self.blue_cones)} "
-                        f"wp={len(self._waypoints)})",
-                        throttle_duration_sec=1.0)
+                # Toujours avancer doucement tout droit — ne jamais s'arrêter
+                cmd.throttle = THROTTLE_PULSE if self.speed < SPEED_TARGET else 0.0
+                cmd.brake    = 0.0
+                cmd.steering = 0.0
+                self.get_logger().warn(
+                    f"Piste perdue — avance droit "
+                    f"(J={len(self.yellow_cones)} B={len(self.blue_cones)} "
+                    f"wp={len(self._waypoints)})",
+                    throttle_duration_sec=1.0)
                 self.pub_cmd.publish(cmd)
                 return
             tx, ty = local
             in_car_frame = True
         else:
             in_car_frame = False
-
-        self._last_target_t = self.get_clock().now()
 
         # ── Pure Pursuit ──────────────────────────────────────────────────────
         if not in_car_frame:
@@ -344,8 +377,10 @@ class CenterlineFollower(Node):
         steering  = max(-1.0, min(1.0, -steer_rad / MAX_STEER_RAD))
 
         # ── Vitesse (impulsions, jamais continu) ──────────────────────────────
+        # BRAKE_CORNER uniquement sur chemin global fiable — en fallback local
+        # (cône unique ou carte partielle) le steering est peu fiable, on ne freine pas
         in_corner = abs(steering) > CORNER_STEER
-        if in_corner:
+        if in_corner and not in_car_frame and self.speed > SPEED_CORNER_MIN:
             cmd.throttle = 0.0
             cmd.brake    = BRAKE_CORNER
         elif self.speed > SPEED_MAX:

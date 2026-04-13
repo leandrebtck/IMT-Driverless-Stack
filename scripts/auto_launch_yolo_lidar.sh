@@ -23,8 +23,10 @@ ROS_SETUP="/opt/ros/$MY_ROS_DISTRO/setup.bash"
 SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PERCEPTION_DIR="$PROJECT_ROOT/perception"
-TOOLS_DIR="$PROJECT_ROOT/tools"
+PERCEPTION_DIR="$PROJECT_ROOT/python_scripts/1perception"
+SLAM_DIR="$PROJECT_ROOT/python_scripts/2slam"
+CONTROL_DIR="$PROJECT_ROOT/python_scripts/3control"
+PERF_DIR="$PROJECT_ROOT/python_scripts/performance"
 RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
@@ -102,12 +104,12 @@ gnome-terminal --title="PERCEPTION FUSION" -- bash -c "
     $ROS_CMD;
     
     echo '---- 1. YOLOv8 ----';
-    python3 $SCRIPT_DIR/yolo_ros.py &
+    python3 $PERCEPTION_DIR/yolo_ros.py &
     sleep 2;
     
     echo '---- 2. Fusion Lidar-Camera ----';
     # On lance la fusion maintenant que YOLO et LiDAR tournent
-    python3 $SCRIPT_DIR/sensor_fusion.py &
+    python3 $PERCEPTION_DIR/sensor_fusion.py &
     
     wait" &
 sleep 2
@@ -116,7 +118,7 @@ sleep 2
 echo "🏎️ Lancement Drive..."
 gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
     $ROS_CMD;
-    python3 $TOOLS_DIR/global_drive.py; 
+    python3 $CONTROL_DIR/global_drive.py; 
     exec bash" &
 
 sleep 2

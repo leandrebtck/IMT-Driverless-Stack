@@ -62,7 +62,7 @@ if tracker.hits >= 3:  # MIN_HITS
 ### Étape 6 — Publication
 
 ```
-/perception/lidar_detections  →  cone_mapper_lidar.py
+/perception/lidar_detections  →  python_scripts/2slam/cone_mapper_lidar.py
 /yolo_lidar/cone_markers      →  RViz (visualisation)
 /yolo_lidar/debug_image       →  RViz (image annotée)
 ```

@@ -22,8 +22,10 @@ SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 BRIDGE_PATH="$HOME/Formula-Student-Driverless-Simulator/ros2"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PERCEPTION_DIR="$PROJECT_ROOT/perception"
-TOOLS_DIR="$PROJECT_ROOT/tools"
+PERCEPTION_DIR="$PROJECT_ROOT/python_scripts/1perception"
+SLAM_DIR="$PROJECT_ROOT/python_scripts/2slam"
+CONTROL_DIR="$PROJECT_ROOT/python_scripts/3control"
+PERF_DIR="$PROJECT_ROOT/python_scripts/performance"
 RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 WS_PATH="$PROJECT_ROOT/ros_workspace"
 RVIZ_CONFIG="$RVIZ_DIR/slam.rviz"
@@ -94,7 +96,7 @@ sleep 3
 echo "[5/8] Lancement Cone Mapper Stereo (SLAM)..."
 gnome-terminal --title="SLAM STEREO" -- bash -c "
     $ROS_CMD;
-    python3 $PERCEPTION_DIR/cone_mapper.py;
+    python3 $SLAM_DIR/cone_mapper.py;
     exec bash" &
 sleep 2
 
@@ -110,7 +112,7 @@ sleep 2
 echo "[7/8] Lancement Controle Autonome (centerline follower)..."
 gnome-terminal --title="CONTROLE AUTO" -- bash -c "
     $ROS_CMD;
-    python3 $TOOLS_DIR/centerline_follower.py --map $STEREO_MAP_TOPIC;
+    python3 $CONTROL_DIR/centerline_follower.py --map $STEREO_MAP_TOPIC;
     exec bash" &
 sleep 2
 
@@ -134,4 +136,4 @@ echo "  Eval stats   : /evaluation/stats"
 echo "  Controle     : /control_command"
 echo ""
 echo "Pour prendre la main manuellement, lance :"
-echo "  python3 $TOOLS_DIR/global_drive.py"
+echo "  python3 $CONTROL_DIR/global_drive.py"

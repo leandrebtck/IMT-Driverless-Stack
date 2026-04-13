@@ -10,11 +10,26 @@ Double-clic sur un script pour le lancer. Le panneau de droite affiche les resso
 
 ---
 
+## Pipelines disponibles
+
+| Script | Pipeline | Commande |
+|---|---|---|
+| `slam_lidar.sh` | SLAM LiDAR *(recommandé)* | YOLO + LiDAR + SLAM + conduite manuelle |
+| `slam_stereo.sh` | SLAM Stéréo | YOLO stéréo + SLAM stéréo + conduite manuelle |
+| `auto_centerline_lidar.sh` | Autonome circuit LiDAR | SLAM LiDAR + `centerline_follower.py` |
+| `auto_control_stereo.sh` | Autonome circuit stéréo | SLAM stéréo + `centerline_follower.py` |
+| `skidpad_lidar.sh` | Skidpad LiDAR | SLAM Skidpad LiDAR + `skidpad_driver.py` |
+| `skidpad_stereo.sh` | Skidpad stéréo | SLAM Skidpad stéréo + `skidpad_driver.py` |
+| `acceleration_lidar.sh` | Accélération LiDAR | SLAM LiDAR + `acceleration_driver.py` |
+| `auto_lidar.sh` | LiDAR seul (sans YOLO) | DBSCAN + SLAM + conduite manuelle |
+| `auto_eval.sh` | Évaluation SLAM | `cone_evaluator.py` + `eval_dashboard.py` |
+
+---
+
 ## Pipeline SLAM LiDAR *(le plus précis)*
 
 ```bash
-cd ~/IMT-Driverless-Stack/python_stack
-bash slam_lidar.sh
+bash ~/IMT-Driverless-Stack/scripts/slam_lidar.sh
 ```
 
 Lance dans l'ordre :
@@ -25,7 +40,7 @@ Lance dans l'ordre :
 4. **odom_tf_publisher** — crée `fsds/map` dans le TF (attend 2 s)
 5. **YOLO LiDAR** — détection + Kalman (attend 3 s)
 6. **Cone Mapper LiDAR** — SLAM (attend 2 s)
-7. **RViz** — avec config `slam_lidar.rviz` si présente
+7. **RViz** — avec config `slam_lidar.rviz`
 8. **Global Drive** — contrôle clavier
 
 **Topics utiles :**
@@ -36,75 +51,82 @@ Lance dans l'ordre :
 
 ---
 
-## Pipeline SLAM Stéréo
+## Pipeline Skidpad
 
 ```bash
-cd ~/IMT-Driverless-Stack/python_stack
-bash slam_stereo.sh
+bash ~/IMT-Driverless-Stack/scripts/skidpad_lidar.sh
+# ou
+bash ~/IMT-Driverless-Stack/scripts/skidpad_stereo.sh
 ```
 
-Même séquence que le SLAM LiDAR, avec `yolo_stereo.py` et `cone_mapper.py` à la place.
+Lance le SLAM dédié Skidpad (`cone_mapper_skidpad_lidar.py` ou `_stereo.py`) puis `skidpad_driver.py`.
+
+Le SLAM Skidpad affiche les **lignes jaune↔bleu** (centerline) au lieu des lignes latérales.
+
+**Paramètres du driver :**
+
+```bash
+python3 python_scripts/3control/skidpad_driver.py --map /slam_skidpad_lidar/cone_map --straight 13.0
+```
+
+| Argument | Défaut | Description |
+|---|---|---|
+| `--map` | `/slam_skidpad_stereo/cone_map` | Topic SLAM pour détection cônes orange sortie |
+| `--straight` | `13.0` | Distance ligne droite avant d'entrer dans les cercles (m) |
 
 ---
 
-## Pipeline LiDAR seul (sans YOLO)
+## Pipeline Accélération
 
 ```bash
-cd ~/IMT-Driverless-Stack/python_stack
-bash auto_lidar.sh
+bash ~/IMT-Driverless-Stack/scripts/acceleration_lidar.sh
 ```
 
-Lance :
+Lance SLAM LiDAR + `acceleration_driver.py` (75 m plein gaz, freinage à 65 m).
 
-1. FSDS + Bridge + odom_tf
-2. `lidar_ros.py` — filtre sol (garde les points `z > −0.40 m`)
-3. `lidar_cluster.py` — clustering DBSCAN
-4. `cone_mapper_lidar.py` — carte persistante
-5. Global Drive + RViz
-
-**Dans RViz :** Fixed Frame → `fsds/Lidar1`
-
----
-
-## Évaluateur de précision
+**Paramètres du driver :**
 
 ```bash
-cd ~/IMT-Driverless-Stack/python_stack
-bash auto_eval.sh
+python3 python_scripts/3control/acceleration_driver.py --dist 75.0 --brake 10.0 --map /slam_lidar/cone_map
 ```
 
-Lance `cone_evaluator.py` + `eval_dashboard.py` (jauge de précision graphique).
-
-Nécessite que le SLAM LiDAR soit déjà lancé (il lit `/slam_lidar/cone_map`).
+| Argument | Défaut | Description |
+|---|---|---|
+| `--dist` | `75.0` | Distance totale épreuve (m) |
+| `--brake` | `10.0` | Marge de freinage avant la fin (m) |
+| `--map` | `/slam_lidar/cone_map` | Topic SLAM pour détection cônes orange arrivée |
 
 ---
 
 ## Lancer les composants individuellement
 
 ```bash
-cd ~/IMT-Driverless-Stack/python_stack
+# ── perception/ ──────────────────────────────────────
+python3 python_scripts/1perception/odom_tf_publisher.py     # TF (indispensable en premier)
+python3 python_scripts/1perception/yolo_lidar.py            # YOLO + LiDAR + Kalman
+python3 python_scripts/1perception/yolo_stereo.py           # YOLO + stéréo
 
-# TF (indispensable en premier)
-python3 odom_tf_publisher.py
+# ── slam/ ─────────────────────────────────────────────
+python3 python_scripts/2slam/cone_mapper_lidar.py           # SLAM LiDAR
+python3 python_scripts/2slam/cone_mapper.py                 # SLAM stéréo
+python3 python_scripts/2slam/cone_mapper_skidpad_lidar.py   # SLAM Skidpad LiDAR
+python3 python_scripts/2slam/cone_mapper_skidpad_stereo.py  # SLAM Skidpad stéréo
 
-# Détection
-python3 yolo_lidar.py        # YOLO + LiDAR + Kalman
-python3 yolo_stereo.py       # YOLO + stéréo
-
-# SLAM
-python3 cone_mapper_lidar.py # SLAM LiDAR
-python3 cone_mapper.py       # SLAM stéréo
-
-# Évaluation
-python3 cone_evaluator.py --map /slam_lidar/cone_map
-python3 eval_dashboard.py
-
-# Monitoring
-python3 system_monitor.py
-
-# Conduite
-python3 global_drive.py
+# ── control/ ──────────────────────────────────────────
+python3 python_scripts/3control/centerline_follower.py --map /slam_lidar/cone_map
+python3 python_scripts/3control/skidpad_driver.py --map /slam_skidpad_lidar/cone_map
+python3 python_scripts/3control/acceleration_driver.py
+python3 python_scripts/3control/global_drive.py             # conduite manuelle
+python3 python_scripts/3control/cone_evaluator.py           # évaluateur (nécessite SLAM actif)
+python3 python_scripts/performance/eval_dashboard.py           # dashboard précision
+python3 python_scripts/performance/system_monitor.py           # monitoring ressources
 ```
+
+!!! warning "Sourcer l'environnement ROS2 avant chaque commande"
+    ```bash
+    source /opt/ros/$ROS_DISTRO/setup.bash
+    source ~/IMT-Driverless-Stack/ros_workspace/install/setup.bash
+    ```
 
 ---
 
@@ -120,13 +142,13 @@ python3 global_drive.py
 | Topic flèches GT | `/evaluation/markers` → MarkerArray |
 | Topic image | `/yolo_lidar/debug_image` → Image |
 
-### Configuration LiDAR seul
+### Configuration Skidpad
 
 | Paramètre | Valeur |
 |---|---|
-| Fixed Frame | `fsds/Lidar1` |
-| Topic clusters | `/lidar/cone_markers` → MarkerArray |
-| Topic carte | `/slam_lidar/cone_map` → MarkerArray |
+| Fixed Frame | `fsds/map` |
+| Topic cônes | `/slam_skidpad_lidar/cone_map` → MarkerArray |
+| Config RViz | `config/rviz/skidpad_lidar.rviz` |
 
 ---
 

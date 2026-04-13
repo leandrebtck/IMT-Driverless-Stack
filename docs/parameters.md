@@ -1,6 +1,6 @@
 # Paramètres clés
 
-## `yolo_lidar.py` — YOLO + LiDAR + Kalman
+## `python_scripts/1perception/yolo_lidar.py` — YOLO + LiDAR + Kalman
 
 | Paramètre | Valeur | Description | Impact si modifié |
 |---|---|---|---|
@@ -13,7 +13,7 @@
 
 ---
 
-## `cone_mapper_lidar.py` — SLAM LiDAR
+## `python_scripts/2slam/cone_mapper_lidar.py` — SLAM LiDAR
 
 | Paramètre | Valeur | Description | Impact si modifié |
 |---|---|---|---|
@@ -29,7 +29,7 @@
 
 ---
 
-## `cone_mapper.py` — SLAM Stéréo
+## `python_scripts/2slam/cone_mapper.py` — SLAM Stéréo
 
 | Paramètre | Valeur | Différence vs LiDAR |
 |---|---|---|
@@ -40,7 +40,7 @@
 
 ---
 
-## `yolo_stereo.py` — Vision Stéréo
+## `python_scripts/1perception/yolo_stereo.py` — Vision Stéréo
 
 | Paramètre | Valeur | Description |
 |---|---|---|
@@ -56,7 +56,7 @@
 
 ---
 
-## `lidar_cluster.py` — Clustering DBSCAN
+## `python_scripts/1perception/lidar_cluster.py` — Clustering DBSCAN
 
 | Paramètre | Valeur | Description |
 |---|---|---|
@@ -69,7 +69,7 @@
 
 ---
 
-## `cone_evaluator.py` — Évaluateur
+## `python_scripts/1perception/cone_evaluator.py` — Évaluateur
 
 | Paramètre | Valeur | Description |
 |---|---|---|
@@ -78,7 +78,7 @@
 
 ---
 
-## `eval_dashboard.py` — Dashboard précision
+## `python_scripts/performance/eval_dashboard.py` — Dashboard précision
 
 | Paramètre | Valeur | Description |
 |---|---|---|
@@ -98,3 +98,48 @@
 | Diamètre cône FSG | 0.28 m |
 
 Ces valeurs justifient les paramètres `MAX_LINE_STEP` (~5 m × 1.4 = 7–8 m) et `DBSCAN_EPS` (~0.28/2 + marge = 0.5 m).
+
+---
+
+## `python_scripts/3control/centerline_follower.py` — Pilotage circuit
+
+| Paramètre | Valeur | Description |
+|---|---|---|
+| `LOOKAHEAD_DIST` | 4.0 m | Distance cible Pure Pursuit sur le chemin |
+| `WHEELBASE` | 1.5 m | Empattement FSDS |
+| `SPEED_TARGET` | 1.5 m/s | Vitesse cible |
+| `SPEED_MAX` | 2.0 m/s | Vitesse maximale absolue |
+| `THROTTLE_PULSE` | 0.35 | Impulsion gaz |
+| `BRAKE_CORNER` | 0.55 | Freinage en virage serré |
+| `CORNER_STEER` | 0.45 | Seuil `|steering|` pour activer le freinage virage |
+| `SPEED_CORNER_MIN` | 0.4 m/s | Vitesse min en dessous de laquelle ne plus freiner |
+
+---
+
+## `python_scripts/3control/skidpad_driver.py` — Pilotage Skidpad
+
+| Paramètre | Valeur | Description |
+|---|---|---|
+| `DRIVING_RADIUS` | 9.125 m | Rayon des cercles Skidpad FSG |
+| `STRAIGHT_DIST` | 13.0 m | Distance ligne droite avant d'entrer dans les cercles |
+| `LAP_ANGLE` | 2π − 0.3 rad | Angle cumulé pour valider un tour |
+| `LOOKAHEAD_DIST` | 3.5 m | Distance d'anticipation Pure Pursuit |
+| `SPEED_CIRCLE` | 1.5 m/s | Vitesse cible dans les cercles |
+| `SPEED_STRAIGHT` | 2.0 m/s | Vitesse en ligne droite |
+| `ORANGE_STOP_DIST` | 5.0 m | Distance aux cônes orange pour déclencher l'arrêt |
+| `EXIT_MAX_DIST` | 25.0 m | Distance max en EXIT_STR avant arrêt forcé (fallback) |
+
+---
+
+## `python_scripts/3control/acceleration_driver.py` — Pilotage accélération
+
+| Paramètre | Valeur | Description |
+|---|---|---|
+| `ACCEL_DIST` | 75.0 m | Distance totale épreuve FSG |
+| `BRAKE_MARGIN` | 10.0 m | Freinage à `ACCEL_DIST − BRAKE_MARGIN` mètres |
+| `ORANGE_STOP_DIST` | 8.0 m | Arrêt si cônes orange à moins de cette distance |
+| `ORANGE_MIN_DIST` | 40.0 m | Ne chercher les orange qu'après cette distance (évite cônes départ) |
+| `KP_YAW` | 0.8 | Gain proportionnel correction de cap |
+| `THROTTLE_FULL` | 1.0 | Plein gaz |
+| `BRAKE_FULL` | 1.0 | Freinage maximal |
+| `STOP_SPEED` | 0.3 m/s | Vitesse en dessous de laquelle considérer la voiture arrêtée |

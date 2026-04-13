@@ -23,8 +23,10 @@ ROS_SETUP="/opt/ros/$MY_ROS_DISTRO/setup.bash"
 SIM_PATH="$HOME/Formula-Student-Driverless-Simulator-binary"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PERCEPTION_DIR="$PROJECT_ROOT/perception"
-TOOLS_DIR="$PROJECT_ROOT/tools"
+PERCEPTION_DIR="$PROJECT_ROOT/python_scripts/1perception"
+SLAM_DIR="$PROJECT_ROOT/python_scripts/2slam"
+CONTROL_DIR="$PROJECT_ROOT/python_scripts/3control"
+PERF_DIR="$PROJECT_ROOT/python_scripts/performance"
 RVIZ_DIR="$PROJECT_ROOT/config/rviz"
 INTERNAL_WS="$PROJECT_ROOT/ros_workspace"
 
@@ -107,7 +109,7 @@ gnome-terminal --title="LIDAR PIPELINE" -- bash -c "
     sleep 2;
 
     echo '---- 3. Cone Mapper LiDAR (carte persistante) ----';
-    python3 $PERCEPTION_DIR/cone_mapper_lidar.py &
+    python3 $SLAM_DIR/cone_mapper_lidar.py &
 
     wait" &
 sleep 3
@@ -116,7 +118,7 @@ sleep 3
 echo "Lancement Global Drive..."
 gnome-terminal --title="GLOBAL DRIVE" -- bash -c "
     $ROS_CMD;
-    python3 $TOOLS_DIR/global_drive.py; 
+    python3 $CONTROL_DIR/global_drive.py; 
     exec bash" &
 sleep 3
 

@@ -1,3 +1,6 @@
+docs_dir: .
+site_dir: site
+
 site_name: IMT Driverless Stack
 site_description: Stack de perception et SLAM temps réel pour Formula Student Driverless — IMT
 site_author: IMT Driverless Team
@@ -47,6 +50,7 @@ nav:
     - Repères TF: architecture/tf_frames.md
     - Pipelines détaillés: architecture/pipelines.md
     - Déploiement réel: architecture/deployment.md
+  - Matériel réel: hardware.md
   - Installation: installation.md
   - Lancement: lancement.md
   - Paramètres: parameters.md

@@ -1,5 +1,8 @@
 # Déploiement sur véhicule réel
 
+!!! info "Besoins matériels"
+    Voir la page **[Besoins matériels](../hardware.md)** pour les spécifications détaillées des capteurs (LiDAR, caméra stéréo, odométrie, GPU embarqué) et les modèles recommandés.
+
 ## Correspondance topics FSDS → capteurs réels
 
 Pour passer du simulateur au véhicule physique, remplacer les topics FSDS par les équivalents réels :
@@ -25,12 +28,12 @@ Ces nœuds fonctionnent sur véhicule réel en adaptant uniquement les noms de t
 
 | Nœud | Adaptation nécessaire |
 |---|---|
-| `yolo_lidar.py` | Changer les topics caméra et LiDAR |
-| `yolo_stereo.py` | Changer les topics caméra gauche/droite, recalibrer `BASELINE_M` et `FOCAL_PX` |
-| `cone_mapper_lidar.py` | Changer le nom du frame LiDAR |
-| `lidar_cluster.py` | Changer le topic d'entrée LiDAR |
-| `odom_tf_publisher.py` | Changer le topic d'odométrie |
-| `global_drive.py` | Remplacer `fs_msgs/ControlCommand` par le protocole du véhicule réel |
+| `python_scripts/1perception/yolo_lidar.py` | Changer les topics caméra et LiDAR |
+| `python_scripts/1perception/yolo_stereo.py` | Changer les topics caméra gauche/droite, recalibrer `BASELINE_M` et `FOCAL_PX` |
+| `python_scripts/2slam/cone_mapper_lidar.py` | Changer le nom du frame LiDAR |
+| `python_scripts/1perception/lidar_cluster.py` | Changer le topic d'entrée LiDAR |
+| `python_scripts/1perception/odom_tf_publisher.py` | Changer le topic d'odométrie |
+| `python_scripts/3control/global_drive.py` | Remplacer `fs_msgs/ControlCommand` par le protocole du véhicule réel |
 
 ---
 
@@ -59,7 +62,7 @@ Le dashboard affiche 3 catégories :
 
 ## Calibration caméra stéréo (véhicule réel)
 
-Paramètres à recalibrer dans `yolo_stereo.py` :
+Paramètres à recalibrer dans `python_scripts/1perception/yolo_stereo.py` :
 
 ```python
 BASELINE_M  = 0.64   # ← distance réelle entre les deux caméras (mesurer)
