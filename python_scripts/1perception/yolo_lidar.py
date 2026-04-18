@@ -30,6 +30,7 @@ import math
 import numpy as np
 import cv2
 import torch
+import threading
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -37,11 +38,10 @@ from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from cv_bridge import CvBridge
 from ultralytics import YOLO
 from visualization_msgs.msg import Marker, MarkerArray
-from geometry_msgs.msg import PointStamped
 from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose
 from tf2_ros import Buffer, TransformListener
-import tf2_geometry_msgs
 from image_geometry import PinholeCameraModel
+import message_filters
 
 try:
     import sensor_msgs_py.point_cloud2 as pc2
@@ -176,21 +176,27 @@ class YoloLidarNode(Node):
         self.cam_width  = 0
         self.cam_height = 0
 
-        # Cache image
-        self.latest_image  = None
-        self.latest_header = None
+        # Display thread (même pattern que yolo_stereo)
+        self._display_frame = None
+        self._display_lock  = threading.Lock()
+
+        # Guard : empêche l'accumulation de callbacks si YOLO est lent
+        self._processing = False
 
         # Trackers actifs
         self.trackers: list[ConeTracker] = []
 
-        # Subscribers
+        # Subscribers synchronisés (même pattern que yolo_stereo)
         _t = CFG['topics']
-        self.create_subscription(
-            Image, _t['camera_left'],
-            self._image_cb, qos_profile_sensor_data)
-        self.create_subscription(
-            PointCloud2, _t['lidar'],
-            self._lidar_cb, qos_profile_sensor_data)
+        self.sub_image = message_filters.Subscriber(
+            self, Image, _t['camera_left'],
+            qos_profile=qos_profile_sensor_data)
+        self.sub_lidar = message_filters.Subscriber(
+            self, PointCloud2, _t['lidar'],
+            qos_profile=qos_profile_sensor_data)
+        self.ts = message_filters.ApproximateTimeSynchronizer(
+            [self.sub_image, self.sub_lidar], queue_size=5, slop=0.1)
+        self.ts.registerCallback(self._sync_cb)
 
         # Publishers
         self.pub_debug   = self.create_publisher(Image,            _t['debug_image_yolo_lidar'],   10)
@@ -213,23 +219,29 @@ class YoloLidarNode(Node):
         self.cam_width, self.cam_height = width, height
         self.get_logger().info(f"Modèle caméra : {width}×{height}")
 
-    def _image_cb(self, msg):
+    # ── Callback synchronisé image + LiDAR ──────────────────────────────────
+    def _sync_cb(self, img_msg, lidar_msg):
+        # Skip si le pipeline précédent n'est pas terminé (évite l'accumulation)
+        if self._processing:
+            return
+        self._processing = True
         try:
-            img = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
-            H, W = img.shape[:2]
-            if W != self.cam_width or H != self.cam_height:
-                self._setup_camera(W, H)
-            self.latest_image  = img
-            self.latest_header = msg.header
-        except Exception as e:
-            self.get_logger().error(f"image_cb : {e}")
+            self._process_frame(img_msg, lidar_msg)
+        finally:
+            self._processing = False
 
-    # ── LiDAR callback (pipeline principal) ─────────────────────────────────
-    def _lidar_cb(self, msg):
-        if self.latest_image is None or self.cam_width == 0:
+    def _process_frame(self, img_msg, lidar_msg):
+        try:
+            frame = self.bridge.imgmsg_to_cv2(img_msg, 'bgr8')
+        except Exception as e:
+            self.get_logger().error(f"image conversion : {e}")
             return
 
-        # 1. TF LiDAR → caméra
+        H, W = frame.shape[:2]
+        if W != self.cam_width or H != self.cam_height:
+            self._setup_camera(W, H)
+
+        # 1. TF LiDAR → caméra (extraction matrice 4×4 pour batch numpy)
         try:
             tf = self.tf_buffer.lookup_transform(
                 'fsds/cam1', 'fsds/Lidar1', rclpy.time.Time(seconds=0))
@@ -237,23 +249,32 @@ class YoloLidarNode(Node):
             self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
             return
 
+        t = tf.transform.translation
+        q = tf.transform.rotation
+        # Quaternion → matrice de rotation
+        qx, qy, qz, qw = q.x, q.y, q.z, q.w
+        R = np.array([
+            [1-2*(qy*qy+qz*qz), 2*(qx*qy-qz*qw),   2*(qx*qz+qy*qw)],
+            [2*(qx*qy+qz*qw),   1-2*(qx*qx+qz*qz),  2*(qy*qz-qx*qw)],
+            [2*(qx*qz-qy*qw),   2*(qy*qz+qx*qw),     1-2*(qx*qx+qy*qy)]
+        ], dtype=np.float64)
+        T = np.array([t.x, t.y, t.z], dtype=np.float64)
+
         # 2. Lecture points + filtre sol
         try:
-            raw = list(pc2.read_points(msg, field_names=('x', 'y', 'z'), skip_nans=True))
+            raw = list(pc2.read_points(lidar_msg, field_names=('x', 'y', 'z'), skip_nans=True))
         except Exception as e:
             self.get_logger().error(f"Lecture PointCloud2 : {e}")
             return
         if not raw:
             return
         pts = np.array([[float(p[0]), float(p[1]), float(p[2])] for p in raw],
-                       dtype=np.float32)
+                       dtype=np.float64)
         pts = pts[pts[:, 2] > self.Z_GROUND]
         if len(pts) == 0:
             return
 
         # 3. YOLO
-        frame   = self.latest_image.copy()
-        H, W    = frame.shape[:2]
         results = self.model(frame, verbose=False, conf=0.5)
         yolo_dets = []   # list of {x1,y1,x2,y2, key, conf}
         if results and len(results[0].boxes):
@@ -268,64 +289,67 @@ class YoloLidarNode(Node):
                 yolo_dets.append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
                                   'key': key, 'conf': conf})
 
-        # 4. Projection LiDAR → pixels
-        projected = []   # {u, v, dist_xy, x_lid, y_lid, z_lid}
-        for pt in pts:
-            p = PointStamped()
-            p.header.frame_id = 'fsds/Lidar1'
-            p.point.x, p.point.y, p.point.z = float(pt[0]), float(pt[1]), float(pt[2])
-            try:
-                p_cam = tf2_geometry_msgs.do_transform_point(p, tf)
-            except Exception:
-                continue
-            z_opt =  p_cam.point.x
-            x_opt = -p_cam.point.y
-            y_opt = -p_cam.point.z
-            if z_opt < 0.1:
-                continue
-            u, v = self.cam_model.project3dToPixel((x_opt, y_opt, z_opt))
-            u, v = int(u), int(v)
-            if 0 <= u < W and 0 <= v < H:
-                projected.append({
-                    'u': u, 'v': v,
-                    'dist': float(np.linalg.norm(pt[:2])),
-                    'x': float(pt[0]), 'y': float(pt[1]), 'z': float(pt[2])
-                })
+        # 4. Projection LiDAR → pixels (batch numpy, ~100x plus rapide)
+        # Transformation LiDAR → repère physique caméra : p_cam = R @ p_lid + T
+        pts_cam = (R @ pts.T).T + T                    # (N, 3) dans repère cam1
+        # Repère physique cam1 (X=avant,Y=gauche,Z=haut) → repère optique (X=droite,Y=bas,Z=profondeur)
+        z_opt = pts_cam[:, 0]                           # X_phys = profondeur
+        x_opt = -pts_cam[:, 1]                          # -Y_phys = droite
+        y_opt = -pts_cam[:, 2]                          # -Z_phys = bas
 
-        # 5. Fusion YOLO ↔ LiDAR : extraction de position 3D par bbox
+        # Filtre : devant la caméra uniquement
+        valid = z_opt > 0.1
+        z_opt, x_opt, y_opt = z_opt[valid], x_opt[valid], y_opt[valid]
+        pts_valid = pts[valid]                          # coordonnées LiDAR originales
+
+        # Projection pinhole → pixels
+        fx = self.cam_model.fx()
+        fy = self.cam_model.fy()
+        cx_cam = self.cam_model.cx()
+        cy_cam = self.cam_model.cy()
+        u_all = (fx * x_opt / z_opt + cx_cam).astype(np.int32)
+        v_all = (fy * y_opt / z_opt + cy_cam).astype(np.int32)
+
+        # Filtre : dans l'image
+        in_img = (u_all >= 0) & (u_all < W) & (v_all >= 0) & (v_all < H)
+        u_px    = u_all[in_img]
+        v_px    = v_all[in_img]
+        pts_img = pts_valid[in_img]                     # (M, 3) coords LiDAR
+        dist_xy = np.linalg.norm(pts_img[:, :2], axis=1)  # distance XY dans repère LiDAR
+
+        # 5. Fusion YOLO ↔ LiDAR : extraction de position 3D par bbox (vectorisé)
         detections_3d = []   # list of {x,y,z, key, conf, bbox}
         for det in yolo_dets:
-            x1, y1, x2, y2 = det['x1'], det['y1'], det['x2'], det['y2']
-            m = max(self.MARGIN, int(self.MARGIN_RATIO * min(x2 - x1, y2 - y1)))
+            bx1, by1, bx2, by2 = det['x1'], det['y1'], det['x2'], det['y2']
+            m = max(self.MARGIN, int(self.MARGIN_RATIO * min(bx2 - bx1, by2 - by1)))
 
-            inside = [p for p in projected
-                      if x1 - m <= p['u'] <= x2 + m and y1 - m <= p['v'] <= y2 + m]
-
-            if len(inside) < self.MIN_PTS:
+            # Masque des points LiDAR dans la bbox (vectorisé)
+            mask = ((u_px >= bx1 - m) & (u_px <= bx2 + m) &
+                    (v_px >= by1 - m) & (v_px <= by2 + m))
+            n_inside = np.count_nonzero(mask)
+            if n_inside < self.MIN_PTS:
                 continue
 
-            # Rejet des outliers : on garde les points à ±OUTLIER_STD de la médiane
-            dists  = np.array([p['dist'] for p in inside])
-            median = float(np.median(dists))
-            inliers = [p for p, d in zip(inside, dists)
-                       if abs(d - median) <= self.OUTLIER_STD]
-
-            if len(inliers) < self.MIN_PTS:
+            # Rejet des outliers : points à ±OUTLIER_STD de la médiane
+            dists_in = dist_xy[mask]
+            median   = np.median(dists_in)
+            inlier_mask = np.abs(dists_in - median) <= self.OUTLIER_STD
+            if np.count_nonzero(inlier_mask) < self.MIN_PTS:
                 continue
 
-            # Position 3D = centroïde pondéré (poids ∝ 1/distance pour favoriser
-            # les points proches du centre de la bbox en profondeur)
-            inv_d = np.array([1.0 / max(p['dist'], 0.1) for p in inliers])
+            pts_inlier  = pts_img[mask][inlier_mask]    # (K, 3)
+            dist_inlier = dists_in[inlier_mask]
+
+            # Centroïde pondéré (poids ∝ 1/distance)
+            inv_d = 1.0 / np.maximum(dist_inlier, 0.1)
             w     = inv_d / inv_d.sum()
-            cx3d  = float(np.sum([p['x'] * wi for p, wi in zip(inliers, w)]))
-            cy3d  = float(np.sum([p['y'] * wi for p, wi in zip(inliers, w)]))
-            cz3d  = float(np.sum([p['z'] * wi for p, wi in zip(inliers, w)]))
+            centroid = (pts_inlier * w[:, None]).sum(axis=0)
 
             detections_3d.append({
-                'x': cx3d, 'y': cy3d, 'z': cz3d,
-                'dist': median,
+                'x': float(centroid[0]), 'y': float(centroid[1]), 'z': float(centroid[2]),
+                'dist': float(median),
                 'key': det['key'], 'conf': det['conf'],
-                'bbox': (x1, y1, x2, y2)
+                'bbox': (bx1, by1, bx2, by2)
             })
 
         # 6. Association détections 3D ↔ trackers (greedy par distance 3D min)
@@ -372,10 +396,10 @@ class YoloLidarNode(Node):
         self.trackers = [tr for tr in self.trackers if tr.misses < self.MAX_MISSES]
 
         # 7. Publication markers + image debug
-        self._publish(msg, detections_3d, frame, W, H)
+        self._publish(lidar_msg, img_msg.header, detections_3d, frame, W, H)
 
     # ── Publication ──────────────────────────────────────────────────────────
-    def _publish(self, lidar_msg, detections_3d, frame, W, H):
+    def _publish(self, lidar_msg, img_header, detections_3d, frame, W, H):
         now          = self.get_clock().now().to_msg()
         marker_array = MarkerArray()
         debug        = frame.copy()
@@ -458,27 +482,52 @@ class YoloLidarNode(Node):
 
         try:
             dbg_msg = self.bridge.cv2_to_imgmsg(debug, encoding='bgr8')
-            if self.latest_header:
-                dbg_msg.header = self.latest_header
+            dbg_msg.header = img_header
             self.pub_debug.publish(dbg_msg)
         except Exception:
             pass
 
-        cv2.imshow("YOLO + LiDAR", debug)
-        cv2.waitKey(1)
+        with self._display_lock:
+            self._display_frame = debug
+
+
+# ── Boucle d'affichage dans un thread dédié ─────────────────────────────────
+# Séparation nécessaire pour ne pas bloquer le spin ROS avec cv2.imshow
+# (même pattern que yolo_stereo.py)
+# ────────────────────────────────────────────────────────────────────────────
+def display_loop(node):
+    import time
+    while rclpy.ok():
+        with node._display_lock:
+            frame = node._display_frame
+        if frame is not None:
+            cv2.imshow("YOLO + LiDAR", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        else:
+            time.sleep(0.033)
+    cv2.destroyAllWindows()
 
 
 # ────────────────────────────────────────────────────────────────────────────
 def main(args=None):
     rclpy.init(args=args)
     node = YoloLidarNode()
+
+    display_thread = threading.Thread(target=display_loop, args=(node,), daemon=True)
+    display_thread.start()
+
+    from rclpy.executors import MultiThreadedExecutor
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
+
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
+        executor.shutdown()
         node.destroy_node()
-        cv2.destroyAllWindows()
         if rclpy.ok():
             rclpy.shutdown()
 
