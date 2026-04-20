@@ -108,13 +108,10 @@ class ConeMapperLidarNode(Node):
         turning   = False   # jamais bloqué pour LiDAR
         max_depth = self.MAX_DEPTH_STRAIGHT
 
-        # TF : on utilise toujours le transform le plus récent disponible.
-        # Le timestamp exact échoue souvent (décalage LiDAR/TF) ; le TF "latest"
-        # introduit une erreur position ≈ vitesse × latence (~3 cm à 1.5 m/s) — acceptable.
         try:
             tf = self.tf_buffer.lookup_transform(
-                MAP_FRAME, LIDAR_FRAME, rclpy.time.Time(seconds=0),
-                timeout=rclpy.duration.Duration(seconds=0.05))
+                MAP_FRAME, LIDAR_FRAME, msg.header.stamp,
+                timeout=rclpy.duration.Duration(seconds=0.1))
         except Exception as e:
             self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
             return
