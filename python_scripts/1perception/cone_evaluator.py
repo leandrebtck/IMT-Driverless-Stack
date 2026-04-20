@@ -61,16 +61,17 @@ class ConeEvaluatorNode(Node):
 
         # ── Ground truth via /testing_only/track ─────────────────────────────
         if FS_MSGS_OK:
-            self.create_subscription(
-                Track, CFG['topics']['ground_truth_track'],
-                self._track_cb,
-                QoSProfile(
-                    depth=10,
-                    reliability=ReliabilityPolicy.RELIABLE,
-                    durability=DurabilityPolicy.VOLATILE
-                )
-            )
-            self.get_logger().info(f"Souscription à {CFG['topics']['ground_truth_track']} (fs_msgs/Track)")
+            gt_topic = CFG['topics']['ground_truth_track']
+            for qos in [
+                QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                           durability=DurabilityPolicy.VOLATILE),
+                QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT,
+                           durability=DurabilityPolicy.VOLATILE),
+                QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                           durability=DurabilityPolicy.TRANSIENT_LOCAL),
+            ]:
+                self.create_subscription(Track, gt_topic, self._track_cb, qos)
+            self.get_logger().info(f"Souscription à {gt_topic} (fs_msgs/Track, 3 QoS)")
         else:
             self.get_logger().error(
                 "fs_msgs non disponible — sourcer le workspace FSDS :\n"
@@ -111,52 +112,63 @@ class ConeEvaluatorNode(Node):
             self._publish_gt_markers()
             self._gt_pub_done = True
 
-    # ── Fallback GT (si message publié avant notre démarrage) ────────────────
+    # ── Fallback GT (retry périodique jusqu'à réception) ─────────────────────
     def _gt_fallback_once(self):
-        """Timer one-shot : annule après la première exécution."""
-        self._gt_fallback_timer.cancel()
+        """Timer périodique : retente la récupération GT jusqu'à réception."""
         if self.gt_cones:
-            return   # déjà reçu via subscription
+            self._gt_fallback_timer.cancel()
+            return
         self.get_logger().info(
-            "GT non reçu via subscription — tentative via ros2 topic echo…"
+            "GT non reçu — tentative via AirSim API…"
         )
-        threading.Thread(target=self._fetch_gt_subprocess, daemon=True).start()
+        threading.Thread(target=self._fetch_gt_airsim, daemon=True).start()
 
-    def _fetch_gt_subprocess(self):
-        """Lit le topic GT via sous-processus et peuple self.gt_cones."""
+    def _fetch_gt_airsim(self):
+        """Récupère les cônes GT directement via l'API Python AirSim/FSDS."""
         try:
-            result = subprocess.run(
-                ['ros2', 'topic', 'echo', '--once',
-                 CFG['topics']['ground_truth_track']],
-                capture_output=True, text=True, timeout=15
-            )
-            if result.returncode != 0 or not result.stdout.strip():
-                self.get_logger().error("ros2 topic echo GT : aucune réponse")
-                return
-            data = yaml.safe_load(result.stdout)
-            if not isinstance(data, dict) or 'track' not in data:
-                self.get_logger().error("Format GT inattendu")
-                return
-            for cone in data['track']:
-                loc = cone.get('location', {})
+            fsds_path = os.path.expanduser(
+                '~/Formula-Student-Driverless-Simulator/python')
+            if fsds_path not in sys.path:
+                sys.path.insert(0, fsds_path)
+            import fsds
+            client = fsds.FSDSClient()
+            client.confirmConnection()
+            refereeState = client.getRefereeState()
+            cones = refereeState.cones
+
+            # Position de départ de la voiture (même offset que le bridge C++)
+            start_x = refereeState.initial_position.x
+            start_y = refereeState.initial_position.y
+
+            # Reproduire exactement la conversion du bridge FSDS C++ :
+            #   x_ros = (x_ue - car_start_x) * 0.01
+            #   y_ros = -(y_ue - car_start_y) * 0.01
+            for cone in cones:
+                if isinstance(cone, dict):
+                    cx, cy = cone.get('x', 0.0), cone.get('y', 0.0)
+                    cc = cone.get('color', 4)
+                else:
+                    cx = getattr(cone, 'x', 0.0)
+                    cy = getattr(cone, 'y', 0.0)
+                    cc = getattr(cone, 'color', 4)
+                rx = (float(cx) - start_x) * 0.01 if cx != 0 else 0.0
+                ry = -(float(cy) - start_y) * 0.01 if cy != 0 else 0.0
                 self.gt_cones.append({
-                    'x':     float(loc.get('x', 0.0)),
-                    'y':     float(loc.get('y', 0.0)),
-                    'z':     float(loc.get('z', 0.0)),
-                    'color': FS_COLOR.get(cone.get('color', 4), -1)
+                    'x':     rx,
+                    'y':     ry,
+                    'z':     0.0,
+                    'color': FS_COLOR.get(int(cc), -1)
                 })
-            self.get_logger().info(
-                f"✓ {len(self.gt_cones)} cônes GT récupérés via fallback"
-            )
-            if not self._gt_pub_done:
-                self._publish_gt_markers()
-                self._gt_pub_done = True
-        except subprocess.TimeoutExpired:
-            self.get_logger().error(
-                "Timeout fallback GT — le bridge FSDS est-il lancé ?"
-            )
+            if self.gt_cones:
+                self.get_logger().info(
+                    f"GT via AirSim API : {len(self.gt_cones)} cônes"
+                )
+                if not self._gt_pub_done:
+                    self._publish_gt_markers()
+                    self._gt_pub_done = True
+                return
         except Exception as e:
-            self.get_logger().error(f"Fallback GT échoué : {e}")
+            self.get_logger().warn(f"AirSim API échouée ({e})")
 
     # ── Marqueurs GT (blanc semi-transparent) ─────────────────────────────────
     def _publish_gt_markers(self):
