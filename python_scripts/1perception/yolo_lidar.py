@@ -109,15 +109,16 @@ class ConeTracker:
     def __init__(self, x, y, z, color, conf, bbox):
         self.id     = ConeTracker._next_id
         ConeTracker._next_id += 1
-        self.kf     = KalmanCone(x, y, z)
         self.color  = color
         self.conf   = conf
         self.bbox   = bbox      # (x1, y1, x2, y2) dans l'image
         self.hits   = 1
         self.misses = 0
+        # Position brute de la dernière mesure (repère LiDAR courant)
+        self._raw_pos = np.array([x, y, z], dtype=np.float64)
 
     def update(self, x, y, z, color, conf, bbox):
-        self.kf.update(x, y, z)
+        self._raw_pos = np.array([x, y, z], dtype=np.float64)
         self.color  = color
         self.conf   = conf
         self.bbox   = bbox
@@ -129,7 +130,7 @@ class ConeTracker:
 
     @property
     def position(self):
-        return self.kf.position
+        return self._raw_pos.copy()
 
     @property
     def confirmed(self):
@@ -353,6 +354,8 @@ class YoloLidarNode(Node):
             })
 
         # 6. Association détections 3D ↔ trackers (greedy par distance 3D min)
+        #    Seuls les trackers fraîchement mis à jour (misses <= 1) participent
+        #    car les positions périmées dans le repère LiDAR mobile sont faussées.
         matched_t = set()
         matched_d = set()
         pairs = []   # (det_idx, tracker_idx)
@@ -360,7 +363,7 @@ class YoloLidarNode(Node):
         for d_idx, det in enumerate(detections_3d):
             best_t, best_dist = None, self.ASSOC_DIST
             for t_idx, tr in enumerate(self.trackers):
-                if t_idx in matched_t:
+                if t_idx in matched_t or tr.misses > 1:
                     continue
                 tp = tr.position
                 d3 = math.sqrt((det['x'] - tp[0])**2 +
@@ -400,7 +403,6 @@ class YoloLidarNode(Node):
 
     # ── Publication ──────────────────────────────────────────────────────────
     def _publish(self, lidar_msg, img_header, detections_3d, frame, W, H):
-        now          = self.get_clock().now().to_msg()
         marker_array = MarkerArray()
         debug        = frame.copy()
 
@@ -408,7 +410,7 @@ class YoloLidarNode(Node):
         del_mk        = Marker()
         del_mk.action = Marker.DELETEALL
         del_mk.header.frame_id = lidar_msg.header.frame_id
-        del_mk.header.stamp    = now
+        del_mk.header.stamp    = lidar_msg.header.stamp
         marker_array.markers.append(del_mk)
 
         # Dessine toutes les detections YOLO (même non confirmées) sur l'image debug
@@ -420,9 +422,9 @@ class YoloLidarNode(Node):
             cv2.putText(debug, f"{label} {det['dist']:.1f}m",
                         (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
 
-        # Markers + annotations pour les trackers confirmés uniquement
+        # Markers + annotations pour les trackers confirmés ET fraîchement mis à jour
         for tr in self.trackers:
-            if not tr.confirmed:
+            if not tr.confirmed or tr.misses > 0:
                 continue
             pos = tr.position
             x1, y1, x2, y2 = tr.bbox
@@ -441,7 +443,7 @@ class YoloLidarNode(Node):
             # Marker sphère en RViz
             mk = Marker()
             mk.header.frame_id    = lidar_msg.header.frame_id
-            mk.header.stamp       = now
+            mk.header.stamp       = lidar_msg.header.stamp
             mk.ns                 = 'yolo_lidar_cones'
             mk.id                 = tr.id
             mk.type               = Marker.CYLINDER
@@ -460,11 +462,12 @@ class YoloLidarNode(Node):
         self.pub_markers.publish(marker_array)
 
         # Publication Detection2DArray pour le SLAM lidar (cone_mapper_lidar.py)
+        # Timestamp du scan LiDAR original (pas now) pour que le SLAM utilise le bon TF
         det_array = Detection2DArray()
         det_array.header.frame_id = lidar_msg.header.frame_id
-        det_array.header.stamp    = now
+        det_array.header.stamp    = lidar_msg.header.stamp
         for tr in self.trackers:
-            if not tr.confirmed:
+            if not tr.confirmed or tr.misses > 0:
                 continue
             pos  = tr.position
             d2d  = Detection2D()
