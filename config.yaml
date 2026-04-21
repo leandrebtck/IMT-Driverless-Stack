@@ -183,9 +183,8 @@ slam:
   count_cap: 20
 
   # Nombre min de détections pour afficher un cône sur la carte.
-  # 1 = affiche dès la première détection (réactivité max, quelques faux positifs).
-  # Augmenter si trop de cônes fantômes.
-  min_count: 1
+  # 2 = confirme avant d'afficher (réduit les fantômes).
+  min_count: 2
 
   # Fréquence de publication de la carte (Hz)
   publish_hz: 10.0
@@ -197,8 +196,9 @@ slam:
 
   lidar:
     # Distance max pour fusionner deux détections LiDAR du même cône.
-    # LiDAR précis (±10 cm) → 1.2 m suffit.
-    merge_distance_m: 1.2
+    # Les cônes du côté opposé au virage sont vus sous un angle rasant
+    # avec ~1-2m d'erreur → 2.5m pour absorber ces variations.
+    merge_distance_m: 2.5
     max_depth_straight_m: 12.0   # LiDAR fiable jusqu'à 12 m
     max_depth_turn_m: 8.0
 
