@@ -111,10 +111,15 @@ class ConeMapperLidarNode(Node):
         try:
             tf = self.tf_buffer.lookup_transform(
                 MAP_FRAME, LIDAR_FRAME, msg.header.stamp,
-                timeout=rclpy.duration.Duration(seconds=0.1))
-        except Exception as e:
-            self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
-            return
+                timeout=rclpy.duration.Duration(seconds=0.05))
+        except Exception:
+            try:
+                tf = self.tf_buffer.lookup_transform(
+                    MAP_FRAME, LIDAR_FRAME, rclpy.time.Time(seconds=0),
+                    timeout=rclpy.duration.Duration(seconds=0.05))
+            except Exception as e:
+                self.get_logger().warning(f"TF non prêt : {e}", throttle_duration_sec=2)
+                return
 
         for det in msg.detections:
             if not det.results:
