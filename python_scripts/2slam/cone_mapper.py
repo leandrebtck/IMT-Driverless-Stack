@@ -225,42 +225,39 @@ class ConeMapperNode(Node):
             if cone['color'] in by_color:
                 by_color[cone['color']].append((cone['x'], cone['y'], cone['z']))
 
-        # Lignes de délimitation de piste
-        line_cfg = {
-            0: ('track_yellow', 20000, (1.0, 1.0, 0.0)),
-            1: ('track_blue',   21000, (0.0, 0.4, 1.0)),
-            2: ('track_orange', 22000, (1.0, 0.4, 0.0)),
-        }
-        for color_id, (ns, base_id, (r, g, b)) in line_cfg.items():
-            pts = by_color[color_id]
-            if len(pts) < 2:
-                continue
-            # nearest-neighbor avec contrainte de distance max (évite les traits parasites)
-            segments = self._angle_segments(pts, self.MAX_LINE_STEP)
-            for seg_idx, seg in enumerate(segments):
-                # Sous-échantillonnage : 1 cône sur LINE_STRIDE comme point de contrôle.
-                # Les cônes intermédiaires ne sont pas des points de contrôle →
-                # un cône légèrement aberrant n'influe plus sur la forme de la courbe.
-                ctrl = seg[::self.LINE_STRIDE]
-                if seg[-1] != ctrl[-1]:   # toujours inclure le dernier cône
-                    ctrl = ctrl + [seg[-1]]
-                smooth = self._catmull_rom(ctrl, steps=15)
-                ln = Marker()
-                ln.header.frame_id    = MAP_FRAME
-                ln.header.stamp       = now
-                ln.ns                 = ns
-                ln.id                 = base_id + seg_idx
-                ln.type               = Marker.LINE_STRIP
-                ln.action             = Marker.ADD
-                ln.pose.orientation.w = 1.0
-                ln.scale.x            = 0.10
-                ln.color.r, ln.color.g, ln.color.b = r, g, b
-                ln.color.a            = 0.85
-                ln.lifetime.sec = ln.lifetime.nanosec = 0
-                for (x, y, z) in smooth:
-                    gp = GPoint(); gp.x = x; gp.y = y; gp.z = z
-                    ln.points.append(gp)
-                marker_array.markers.append(ln)
+        # Lignes vertes transversales : relient chaque cône jaune au cône bleu le plus proche
+        yellow_cones = by_color[0]  # liste de (x, y, z)
+        blue_cones   = by_color[1]
+        if yellow_cones and blue_cones:
+            ln = Marker()
+            ln.header.frame_id    = MAP_FRAME
+            ln.header.stamp       = now
+            ln.ns                 = 'track_cross_lines'
+            ln.id                 = 20000
+            ln.type               = Marker.LINE_LIST
+            ln.action             = Marker.ADD
+            ln.pose.orientation.w = 1.0
+            ln.scale.x            = 0.08
+            ln.color.r, ln.color.g, ln.color.b = 0.0, 1.0, 0.0  # vert
+            ln.color.a            = 0.85
+            ln.lifetime.sec = ln.lifetime.nanosec = 0
+
+            for (yx, yy, yz) in yellow_cones:
+                # Trouver le cône bleu le plus proche
+                best_dist = float('inf')
+                best_blue = None
+                for (bx, by, bz) in blue_cones:
+                    d = math.sqrt((yx - bx)**2 + (yy - by)**2)
+                    if d < best_dist:
+                        best_dist = d
+                        best_blue = (bx, by, bz)
+                if best_blue is not None:
+                    p1 = GPoint(); p1.x = yx; p1.y = yy; p1.z = yz
+                    p2 = GPoint(); p2.x = best_blue[0]; p2.y = best_blue[1]; p2.z = best_blue[2]
+                    ln.points.append(p1)
+                    ln.points.append(p2)
+
+            marker_array.markers.append(ln)
 
         self.pub_map.publish(marker_array)
 

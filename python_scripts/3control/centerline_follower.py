@@ -42,19 +42,19 @@ LATCHED_QOS = QoSProfile(
 )
 
 # ── Pure Pursuit ──────────────────────────────────────────────────────────────
-LOOKAHEAD_DIST  = 4.0   # m — distance cible sur le chemin
+LOOKAHEAD_DIST  = 2.5   # m — distance cible sur le chemin (réduit pour virages serrés)
 WHEELBASE       = 1.5   # m — empattement FSDS
-MAX_STEER_RAD   = 0.5   # rad → normalisé ±1 FSDS
+MAX_STEER_RAD   = 0.4   # rad → normalisé ±1 FSDS (réduit = steering plus agressif)
 MIN_AHEAD       = 0.8   # m — distance min pour considérer un point "devant"
 
 # ── Vitesse ───────────────────────────────────────────────────────────────────
-SPEED_TARGET    = 1.5   # m/s — cible
-SPEED_MAX       = 2.0   # m/s — max absolu
-THROTTLE_PULSE  = 0.35  # impulsion gaz
-BRAKE_LIGHT     = 0.40  # frein léger (trop vite)
-BRAKE_CORNER    = 0.55  # frein fort (virage serré)
-CORNER_STEER    = 0.45  # |steering| → virage
-SPEED_CORNER_MIN = 0.4  # m/s — en dessous, ne plus freiner (évite blocage)
+SPEED_TARGET    = 1.2   # m/s — cible (réduit pour meilleur contrôle)
+SPEED_MAX       = 1.8   # m/s — max absolu
+THROTTLE_PULSE  = 0.30  # impulsion gaz
+BRAKE_LIGHT     = 0.45  # frein léger (trop vite)
+BRAKE_CORNER    = 0.65  # frein fort (virage serré)
+CORNER_STEER    = 0.35  # |steering| → seuil virage (réduit = freine plus tôt)
+SPEED_CORNER_MIN = 0.3  # m/s — en dessous, ne plus freiner (évite blocage)
 
 
 # ── Géométrie piste ───────────────────────────────────────────────────────────

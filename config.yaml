@@ -204,10 +204,10 @@ slam:
 
   stereo:
     # Distance max pour fusionner deux détections stéréo du même cône.
-    # Erreur de profondeur stéréo ≈ ±1-2 m → merge_dist plus grand.
-    merge_distance_m: 2.5
-    max_depth_straight_m: 8.0    # était 4.0 — trop court, cône vu à peine 2 s
-    max_depth_turn_m: 6.0
+    # Réduit à 1.5m pour éviter de fusionner des cônes différents.
+    merge_distance_m: 1.5
+    max_depth_straight_m: 6.0    # réduit pour limiter l'erreur de profondeur stéréo
+    max_depth_turn_m: 4.0
 
   # Lignes de piste Catmull-Rom
   line_stride_lidar: 1    # tous les cônes (LiDAR précis)
